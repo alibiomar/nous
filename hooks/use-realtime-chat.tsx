@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { createClient } from '@/lib/client'
 
@@ -72,7 +72,7 @@ export interface IncomingCallInvite {
 type BroadcastStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR'
 
 export function useRealtimeChat({ roomName, username, currentUserId, userAvatarUrl, initialMessages = [] }: UseRealtimeChatProps) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -175,7 +175,7 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
 
   const sendMessage = useCallback(
     async ({ content, imageUrl }: SendMessagePayload) => {
-      if (!channel || !isConnected) return
+      if (!content && !imageUrl) return
 
       const message: ChatMessage = {
         id: crypto.randomUUID(),
@@ -192,6 +192,8 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
 
       // Update local state immediately for the sender
       setMessages((current) => [...current, message])
+
+      if (!channel || !isConnected) return
 
       await channel.send({
         type: 'broadcast',

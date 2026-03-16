@@ -249,7 +249,6 @@ export const RealtimeChat = ({
     async (e: React.FormEvent) => {
       e.preventDefault()
       if (!newMessage.trim() && !imagePreviewUrl) return
-      if (!isConnected) return
 
       let uploadedImageUrl: string | null = null
 
@@ -504,7 +503,7 @@ export const RealtimeChat = ({
           variant="ghost"
           size="icon"
           onClick={() => fileInputRef.current?.click()}
-          disabled={!isConnected || isUploadingImage}
+          disabled={isUploadingImage}
           className="shrink-0"
           title="Attach image"
         >
@@ -534,14 +533,12 @@ export const RealtimeChat = ({
               broadcastTypingStatus(false)
             }
           }}
-          placeholder={isConnected ? 'Type a message...' : 'Connecting chat...'}
-          readOnly={!isConnected}
+          placeholder={isConnected ? 'Type a message...' : 'Type a message (syncing...)'}
         />
-        {isConnected && (newMessage.trim() || imagePreviewUrl) && (
+        {(newMessage.trim() || imagePreviewUrl) && (
           <Button
             className="aspect-square rounded-full animate-in fade-in slide-in-from-right-4 duration-300 shrink-0"
             type="submit"
-            disabled={!isConnected}
           >
             <Send className="size-4" />
           </Button>

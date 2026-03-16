@@ -14,6 +14,35 @@ interface RealtimeChatWrapperProps {
   currentUserName: string;
 }
 
+function hasOtherPeerInPresence(
+  state: Record<string, unknown>,
+  currentUserId: string
+) {
+  for (const [presenceKey, presences] of Object.entries(state)) {
+    if (presenceKey === currentUserId) {
+      continue;
+    }
+
+    // Match cursor-style existence check: if any non-self presence exists, peer is online.
+    if (Array.isArray(presences) && presences.length > 0) {
+      const hasNonSelfMeta = presences.some((presence) => {
+        if (!presence || typeof presence !== 'object') {
+          return false;
+        }
+
+        const meta = presence as { userId?: string };
+        return Boolean(meta.userId && meta.userId !== currentUserId);
+      });
+
+      if (hasNonSelfMeta || presenceKey !== currentUserId) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function RealtimeChatWrapper({
   currentUserId,
   currentUserName,
@@ -23,7 +52,7 @@ export function RealtimeChatWrapper({
   const [initialMessages, setInitialMessages] = useState<ChatMessage[]>([]);
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [onlinePeerIds, setOnlinePeerIds] = useState<Set<string>>(new Set());
+  const [hasOtherPeerOnline, setHasOtherPeerOnline] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
   const currentUserAvatarUrl = useCurrentUserImage();
 
@@ -71,15 +100,15 @@ export function RealtimeChatWrapper({
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState() as Record<string, unknown>;
-        const ids = new Set<string>();
-
-        for (const userId of Object.keys(state)) {
-          if (userId !== currentUserId) {
-            ids.add(userId);
-          }
-        }
-
-        setOnlinePeerIds(ids);
+        setHasOtherPeerOnline(hasOtherPeerInPresence(state, currentUserId));
+      })
+      .on('presence', { event: 'join' }, () => {
+        const state = presenceChannel.presenceState() as Record<string, unknown>;
+        setHasOtherPeerOnline(hasOtherPeerInPresence(state, currentUserId));
+      })
+      .on('presence', { event: 'leave' }, () => {
+        const state = presenceChannel.presenceState() as Record<string, unknown>;
+        setHasOtherPeerOnline(hasOtherPeerInPresence(state, currentUserId));
       })
       .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
@@ -87,6 +116,8 @@ export function RealtimeChatWrapper({
             userId: currentUserId,
             onlineAt: new Date().toISOString(),
           });
+        } else {
+          setHasOtherPeerOnline(false);
         }
       });
 
@@ -120,10 +151,12 @@ export function RealtimeChatWrapper({
   }, [currentUserId, messagePool]);
 
   const peerStatusLabel = peer
-    ? onlinePeerIds.has(peer.id)
+    ? hasOtherPeerOnline
       ? 'Online'
       : 'Offline'
-    : 'Waiting for peer';
+    : hasOtherPeerOnline
+      ? 'Online'
+      : 'Waiting for peer';
 
   const handleStartCall = async () => {
     if (!peer || isStartingCall) {
