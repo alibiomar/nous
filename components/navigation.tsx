@@ -12,13 +12,31 @@ import Image from 'next/image';
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const { hasUnread } = useUnreadMessages();
 
   const isActive = (path: string) => pathname === path;
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      window.dispatchEvent(new Event('messages:read'));
+      sessionStorage.removeItem('nous:call-session');
+      router.replace('/login');
+      router.refresh();
+      setIsLoggingOut(false);
+    }
   };
 
   const navItems = [
@@ -63,11 +81,12 @@ export function Navigation() {
         <Button
           onClick={handleLogout}
           variant="outline"
+          disabled={isLoggingOut}
           className="mt-auto h-11 rounded-2xl border-border/70 bg-background/60 hover:bg-background/80"
           title="Logout"
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          {isLoggingOut ? 'Logging out...' : 'Logout'}
         </Button>
       </aside>
 
@@ -101,6 +120,7 @@ export function Navigation() {
             ))}
             <button
               onClick={handleLogout}
+              disabled={isLoggingOut}
               className="flex min-h-14 flex-col items-center justify-center rounded-xl px-1 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
               aria-label="Logout"
               title="Logout"

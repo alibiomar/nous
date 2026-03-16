@@ -16,6 +16,16 @@ const supabase = createClient(
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  const isStaticAsset = /\.[a-zA-Z0-9]+$/.test(pathname);
+  if (
+    isStaticAsset ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/_vercel') ||
+    pathname === '/favicon.ico'
+  ) {
+    return NextResponse.next();
+  }
+
   // Public routes that don't require auth
   const publicRoutes = ['/login', '/'];
 

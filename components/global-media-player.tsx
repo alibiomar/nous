@@ -144,6 +144,7 @@ export function GlobalMediaPlayer() {
   const pathname = usePathname();
   const router = useRouter();
   const isMusicPage = pathname === '/music';
+  const isAuthRoute = pathname === '/login' || pathname.startsWith('/auth');
 
   const [currentMedia, setCurrentMedia] = useState<MediaItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -170,6 +171,10 @@ export function GlobalMediaPlayer() {
   const supabase = createClient();
 
   useEffect(() => {
+    if (isAuthRoute) {
+      return;
+    }
+
     fetchCurrentMedia();
 
     const channel = supabase
@@ -186,9 +191,13 @@ export function GlobalMediaPlayer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [isAuthRoute, supabase]);
 
   useEffect(() => {
+    if (isAuthRoute) {
+      return;
+    }
+
     const channel = supabase
       .channel('media-playback-sync')
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
@@ -210,7 +219,7 @@ export function GlobalMediaPlayer() {
       syncChannelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [isAuthRoute, supabase]);
 
   useEffect(() => {
     setExternalSyncEvent(null);
@@ -267,13 +276,23 @@ export function GlobalMediaPlayer() {
   const fetchCurrentMedia = async () => {
     try {
       const response = await fetch('/api/media/now-playing');
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentMedia(data);
-        setIsLoading(false);
+
+      if (!response.ok) {
+        setCurrentMedia(null);
+        return;
       }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setCurrentMedia(null);
+        return;
+      }
+
+      const data = await response.json();
+      setCurrentMedia(data);
     } catch (error) {
       console.error('Failed to fetch media:', error);
+      setCurrentMedia(null);
     } finally {
       setIsLoading(false);
     }
@@ -399,6 +418,10 @@ export function GlobalMediaPlayer() {
   }, [isMusicPage, miniPosition]);
 
   if (!isMusicPage && !currentMedia && !isLoading) {
+    return null;
+  }
+
+  if (isAuthRoute) {
     return null;
   }
 

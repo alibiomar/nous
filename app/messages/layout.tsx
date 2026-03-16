@@ -14,7 +14,7 @@ export default function MessagesLayout({
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      <main className="h-[calc(100dvh-9rem)] pt-20 pb-24 md:ml-72 md:h-screen md:pt-0 md:pb-0">
+      <main className="h-dvh overflow-hidden pt-20 pb-24 md:ml-72 md:h-screen md:pt-0 md:pb-0">
         {children}
       </main>
     </div>

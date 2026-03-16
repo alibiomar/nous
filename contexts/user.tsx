@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export interface User {
   id: string;
@@ -23,15 +23,26 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
+    const isPublicAuthRoute = pathname === '/login' || pathname.startsWith('/auth');
+
+    if (isPublicAuthRoute) {
+      setIsLoading(false);
+      return;
+    }
+
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/auth/session');
+        const response = await fetch('/api/auth/session', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
+          return;
         }
+
+        setUser(null);
       } catch (err) {
         console.error('Failed to fetch session:', err);
       } finally {
@@ -40,15 +51,23 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, []);
+  }, [pathname]);
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
       setUser(null);
-      router.push('/login');
+      sessionStorage.removeItem('nous:call-session');
+      router.replace('/login');
+      router.refresh();
     } catch (err) {
       console.error('Logout failed:', err);
+      router.replace('/login');
+      router.refresh();
     }
   };
 

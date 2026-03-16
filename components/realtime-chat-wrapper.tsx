@@ -146,7 +146,7 @@ export function RealtimeChatWrapper({
  
   if (isLoading) {
     return (
-      <div className="mx-3 mt-1 flex h-[calc(100dvh-9rem)] min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6 md:h-full">
+      <div className="mx-3 mt-1 flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
         <div className="text-center">
           <div className="text-sm text-text-secondary">Loading messages...</div>
         </div>
@@ -155,7 +155,7 @@ export function RealtimeChatWrapper({
   }
 
   return (
-    <div className="h-[calc(100dvh-10rem)] min-h-0 w-full overflow-hidden bg-background md:h-full">
+    <div className="h-full min-h-0 w-full overflow-hidden bg-background">
       <div className="grid h-full gap-4 px-3 pb-3 md:gap-5 md:px-6 md:py-4">
         <div className="glass-panel flex h-full min-h-0 flex-col rounded-3xl border border-border/70 p-3 md:p-4">
           <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
