@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { Cormorant_Garamond, DM_Sans } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import { UserProvider } from '@/contexts/user'
 import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
@@ -23,8 +22,18 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
+  applicationName: 'Nous',
   title: 'Nous',
   description: 'A private space for two',
+  manifest: '/site.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Nous',
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: [
       {
@@ -61,7 +70,6 @@ export default function RootLayout({
             </CallProvider>
           </UnreadMessagesProvider>
         </UserProvider>
-        <Analytics />
       </body>
     </html>
   )
