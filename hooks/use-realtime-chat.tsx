@@ -91,11 +91,32 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
   }, [initialMessages.length]) // Only when initial messages change
 
   useEffect(() => {
+    const handleAddMessageEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<ChatMessage>
+      if (customEvent.detail) {
+        setMessages((current) => {
+          if (current.some((m) => m.id === customEvent.detail.id)) return current
+          return [...current, customEvent.detail]
+        })
+      }
+    }
+
+    window.addEventListener('chat:add_message', handleAddMessageEvent)
+    return () => {
+      window.removeEventListener('chat:add_message', handleAddMessageEvent)
+    }
+  }, [])
+
+  useEffect(() => {
     const newChannel = supabase.channel(roomName)
 
     newChannel
       .on('broadcast', { event: EVENT_MESSAGE_TYPE }, (payload: BroadcastPayload<ChatMessage>) => {
-        setMessages((current) => [...current, payload.payload as ChatMessage])
+        setMessages((current) => {
+          const chatMsg = payload.payload as ChatMessage
+          if (current.some((m) => m.id === chatMsg.id)) return current
+          return [...current, chatMsg]
+        })
       })
       .on('broadcast', { event: EVENT_EDIT_TYPE }, (payload: BroadcastPayload<{ messageId: string; content: string }>) => {
         const { messageId, content } = payload.payload

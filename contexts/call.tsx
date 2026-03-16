@@ -221,7 +221,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const messageData = await response.json()
-        window.dispatchEvent(new Event('messages:changed'))
+
+        const chatMessage = {
+          id: messageData.id,
+          sender_id: messageData.sender_id,
+          content: messageData.content,
+          image_url: messageData.image_url,
+          user: {
+            id: messageData.sender?.id || messageData.sender_id,
+            name: messageData.sender?.name || 'Unknown',
+            avatar_url: messageData.sender?.avatar_url || null,
+          },
+          createdAt: messageData.created_at,
+        }
+
+        window.dispatchEvent(new CustomEvent('chat:add_message', { detail: chatMessage }))
 
         if (roomName) {
           const chatChannel = supabase.channel(roomName)
@@ -230,7 +244,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
               chatChannel.send({
                 type: 'broadcast',
                 event: 'message',
-                payload: messageData,
+                payload: chatMessage,
               }).catch((e: unknown) => console.error('Failed to emit message', e))
               
               // cleanup
@@ -729,7 +743,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
           call.close()
           setError('No answer. Call timed out.')
-          void persistCallMessage(`Missed voice call.`)
+          void persistCallMessage(`Missed voice call.`, session.baseRoomName)
         }, CALL_RING_TIMEOUT_MS)
       } catch (startError) {
         console.error('Failed to start outgoing call:', startError)
