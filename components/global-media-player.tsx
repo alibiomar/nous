@@ -459,6 +459,7 @@ export function GlobalMediaPlayer() {
           ref={miniContainerRef}
           className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
           onPointerDown={handleMiniPointerDown}
+          style={{ touchAction: 'none' }}
         >
           <button
             type="button"
@@ -628,14 +629,16 @@ function YouTubeSyncPlayer({
 
               if (event.data === ytRef.current.PlayerState.PAUSED) {
                 const hiddenPause = document.hidden && isPlayingRef.current;
-                isPlayingRef.current = false;
 
                 // Browser/window focus changes can pause playback; do not treat those as user intent.
                 if (hiddenPause) {
                   hiddenAutoPausedRef.current = true;
+                  // Aggressively attempt to wake the player back up to keep OS audio playing in background
+                  playerRef.current?.playVideo();
                   return;
                 }
 
+                isPlayingRef.current = false;
                 await onPlaybackChange('pause', currentTime, mediaId);
               }
             },
@@ -658,7 +661,10 @@ function YouTubeSyncPlayer({
 
   useEffect(() => {
     const resumeIfHiddenPause = () => {
-      if (!document.hidden && hiddenAutoPausedRef.current && playerRef.current) {
+      // Re-trigger play immediately when backgrounding, sometimes required by iOS Safari to persist MediaSession
+      if (document.hidden && isPlayingRef.current && playerRef.current) {
+        playerRef.current.playVideo();
+      } else if (!document.hidden && hiddenAutoPausedRef.current && playerRef.current) {
         hiddenAutoPausedRef.current = false;
         playerRef.current.playVideo();
       }
