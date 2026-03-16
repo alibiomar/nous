@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
+import { invalidateMessagesCacheForUsers, messagesCacheKey } from '@/lib/api-cache';
 import { decryptFields, encryptFields, encryptValue } from '@/lib/db-encryption';
+import { getOrSetCache } from '@/lib/server-cache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -178,20 +180,44 @@ export async function GET(request: NextRequest) {
 
     await ensureUserRow(supabase, session);
 
-    // Get all messages ordered by created_at ascending (oldest first)
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*, sender:users!messages_sender_id_fkey(id, name, email, avatar_url)')
-      .or(`sender_id.eq.${session.userId},recipient_id.eq.${session.userId}`)
-      .order('created_at', { ascending: true });
+    const { searchParams } = new URL(request.url);
+    const before = searchParams.get('before');
+    const limitRaw = searchParams.get('limit');
+    const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
+    const isOldPageQuery = Boolean(before);
+    const cacheTtlMs = isOldPageQuery ? 60_000 : 8_000;
+    const cacheKey = messagesCacheKey({
+      userId: session.userId,
+      before,
+      limit,
+    });
 
-    if (error) {
-      throw error;
-    }
+    const decryptedMessages = await getOrSetCache(cacheKey, cacheTtlMs, async () => {
+      let query = supabase
+        .from('messages')
+        .select('*, sender:users!messages_sender_id_fkey(id, name, email, avatar_url)')
+        .or(`sender_id.eq.${session.userId},recipient_id.eq.${session.userId}`)
+        .order('created_at', { ascending: true });
 
-    const decryptedMessages = (messages || []).map((message) =>
-      decryptMessageRecord(message as Record<string, unknown>)
-    );
+      if (before) {
+        query = query.lt('created_at', before);
+      }
+
+      if (limit) {
+        query = query.limit(limit);
+      }
+
+      const { data: messages, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      return (messages || []).map((message) =>
+        decryptMessageRecord(message as Record<string, unknown>)
+      );
+    });
 
     return NextResponse.json(decryptedMessages);
   } catch (error) {
@@ -259,6 +285,8 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    invalidateMessagesCacheForUsers([session.userId, recipientId]);
+
     return NextResponse.json(
       decryptMessageRecord(message as Record<string, unknown>),
       { status: 201 }
@@ -307,6 +335,8 @@ export async function PATCH(request: NextRequest) {
         throw error;
       }
 
+      invalidateMessagesCacheForUsers([session.userId]);
+
       return NextResponse.json({ success: true });
     }
 
@@ -322,6 +352,8 @@ export async function PATCH(request: NextRequest) {
         throw error;
       }
 
+      invalidateMessagesCacheForUsers([session.userId]);
+
       return NextResponse.json({ success: true });
     }
 
@@ -329,7 +361,7 @@ export async function PATCH(request: NextRequest) {
       // Edit message - only allow if user is the sender
       const { data: message, error: fetchError } = await supabase
         .from('messages')
-        .select('sender_id')
+        .select('sender_id, recipient_id')
         .eq('id', messageId)
         .single();
 
@@ -360,6 +392,8 @@ export async function PATCH(request: NextRequest) {
         throw error;
       }
 
+      invalidateMessagesCacheForUsers([session.userId, message.recipient_id as string]);
+
       return NextResponse.json(
         decryptMessageRecord(updatedMessage as Record<string, unknown>)
       );
@@ -369,7 +403,7 @@ export async function PATCH(request: NextRequest) {
       // Delete message - only allow if user is the sender
       const { data: message, error: fetchError } = await supabase
         .from('messages')
-        .select('sender_id')
+        .select('sender_id, recipient_id')
         .eq('id', messageId)
         .single();
 
@@ -395,6 +429,8 @@ export async function PATCH(request: NextRequest) {
       if (error) {
         throw error;
       }
+
+      invalidateMessagesCacheForUsers([session.userId, message.recipient_id as string]);
 
       return NextResponse.json({ success: true, messageId });
     }
@@ -438,7 +474,7 @@ export async function DELETE(request: NextRequest) {
     // Check ownership
     const { data: message, error: fetchError } = await supabase
       .from('messages')
-      .select('sender_id')
+      .select('sender_id, recipient_id')
       .eq('id', messageId)
       .single();
 
@@ -464,6 +500,8 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       throw error;
     }
+
+    invalidateMessagesCacheForUsers([session.userId, message.recipient_id as string]);
 
     return NextResponse.json({ success: true, messageId });
   } catch (error) {

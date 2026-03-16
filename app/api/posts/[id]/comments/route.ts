@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { invalidateFeedPostsCache } from '@/lib/api-cache';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
 // Create client that will use user's JWT for auth context
@@ -124,6 +125,8 @@ export async function POST(
     if (error) {
       throw error;
     }
+
+    invalidateFeedPostsCache();
 
     return NextResponse.json(
       decryptCommentRecord(comment as Record<string, unknown>)

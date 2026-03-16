@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { invalidateFeedPostsCache } from '@/lib/api-cache';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
 function createUserAuthenticatedClient(accessToken: string) {
@@ -57,6 +58,8 @@ export async function PATCH(
       throw error;
     }
 
+    invalidateFeedPostsCache();
+
     return NextResponse.json(
       decryptFields(updatedPost as Record<string, unknown>, ['caption'])
     );
@@ -95,6 +98,8 @@ export async function DELETE(
     if (error) {
       throw error;
     }
+
+    invalidateFeedPostsCache();
 
     return NextResponse.json({ success: true });
   } catch (error) {
