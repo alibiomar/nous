@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   applicationName: 'Nous',
   title: 'Nous',
   description: 'A private space for two',
-  manifest: '/site.webmanifest',
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
