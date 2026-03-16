@@ -716,7 +716,12 @@ function YouTubeSyncPlayer({
       : 0;
 
     applyingRemoteSyncRef.current = true;
-    playerRef.current.seekTo(safeTime, true);
+    
+    // Only seek if we're out of sync by more than 2 seconds to avoid continuous play/stop
+    const currentTime = playerRef.current.getCurrentTime();
+    if (Math.abs(currentTime - safeTime) > 2) {
+      playerRef.current.seekTo(safeTime, true);
+    }
 
     if (syncEvent.action === 'play') {
       isPlayingRef.current = true;
