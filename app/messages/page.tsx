@@ -58,8 +58,10 @@ export default function MessagesPage() {
   if (isLoading || isCheckingSession) {
     return (
       <div className="mx-3 mt-1 flex h-full min-h-[60vh] items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
-        <p className="text-muted-foreground">Loading your conversations...</p>
-      </div>
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+          <span>Loading messages...</span>
+        </div>      </div>
     );
   }
 
