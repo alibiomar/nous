@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Phone } from 'lucide-react';
+import { Phone } from 'lucide-react';
 import { RealtimeChat } from '@/components/realtime-chat';
 import { useCurrentUserImage } from '@/hooks/use-current-user-image';
 import type { ChatMessage } from '@/hooks/use-realtime-chat';
@@ -147,8 +147,9 @@ export function RealtimeChatWrapper({
   if (isLoading) {
     return (
       <div className="mx-3 mt-1 flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
-        <div className="text-center">
-          <div className="text-sm text-text-secondary">Loading messages...</div>
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+          <span>Loading messages...</span>
         </div>
       </div>
     );
@@ -174,7 +175,7 @@ export function RealtimeChatWrapper({
                 disabled={!peer || isStartingCall}
                 title="Open voice call page"
               >
-                {isStartingCall ? <Loader2 className="size-4 animate-spin" /> : <Phone className="size-4" />}
+                {isStartingCall ? <img src="/animated_heart_icon.svg" alt="Loading" className="size-4" /> : <Phone className="size-4" />}
               </Button>
             </div>
           </div>

@@ -31,10 +31,7 @@ export function GlobalCallInvitationModal({
       <div className="absolute inset-0 flex items-center justify-center px-4">
         <div className="w-full max-w-sm rounded-2xl border border-border bg-card/95 p-5 shadow-2xl">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Incoming voice call</p>
-          <h3 className="mt-1 text-lg font-semibold">{callerName ?? 'Someone'} is calling</h3>
-          {roomName ? (
-            <p className="mt-1 text-xs text-muted-foreground">Room: {roomName}</p>
-          ) : null}
+          <h3 className="mt-1 text-lg font-semibold">{callerName} is calling</h3>
           <p className="mt-3 text-sm text-muted-foreground">Auto-declines in {secondsRemaining}s</p>
           <div className="mt-4 flex gap-2">
             <Button type="button" className="flex-1" onClick={onAccept}>

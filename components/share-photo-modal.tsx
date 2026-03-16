@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
-import { Loader2, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -206,7 +206,7 @@ export function SharePhotoModal({
           >
             {isPosting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <img src="/animated_heart_icon.svg" alt="Loading" className="w-4 h-4" />
                 Publishing...
               </>
             ) : (

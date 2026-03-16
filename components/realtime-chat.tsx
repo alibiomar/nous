@@ -1,6 +1,6 @@
 'use client'
 
-import { Image as ImageIcon, Loader2, Phone, Send, X } from 'lucide-react'
+import { Image as ImageIcon, Phone, Send, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
 import Image from 'next/image'
 
@@ -509,7 +509,7 @@ export const RealtimeChat = ({
           title="Attach image"
         >
           {isUploadingImage ? (
-            <Loader2 className="size-4 animate-spin" />
+            <img src="/animated_heart_icon.svg" alt="Loading" className="size-4" />
           ) : (
             <ImageIcon className="size-4" />
           )}

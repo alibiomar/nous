@@ -1,8 +1,8 @@
 'use client'
 
-import { Loader2, Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react'
+import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { useCall, type CallSession } from '@/contexts/call'
@@ -11,18 +11,12 @@ interface CallRoomProps {
   session: CallSession
 }
 
-interface WebProximityReading {
-  distance: number
-  max: number
-}
-
-interface WebProximitySensor {
+interface WebAmbientLightSensor {
   addEventListener: (type: 'reading' | 'error', listener: () => void) => void
   removeEventListener: (type: 'reading' | 'error', listener: () => void) => void
   start: () => void
   stop: () => void
-  distance: number
-  max: number
+  illuminance: number
 }
 
 export function CallRoom({ session }: CallRoomProps) {
@@ -41,7 +35,7 @@ export function CallRoom({ session }: CallRoomProps) {
   } = useCall()
   const [isNearFace, setIsNearFace] = useState(false)
   const [manualScreenOff, setManualScreenOff] = useState(false)
-  const [supportsProximity, setSupportsProximity] = useState(false)
+  const [supportsAmbientLight, setSupportsAmbientLight] = useState(false)
 
   useEffect(() => {
     if (!activeSession || activeSession.roomName !== session.roomName) {
@@ -59,26 +53,27 @@ export function CallRoom({ session }: CallRoomProps) {
       return
     }
 
-    const SensorCtor = (window as unknown as { ProximitySensor?: new () => WebProximitySensor }).ProximitySensor
+    const SensorCtor = (window as unknown as { AmbientLightSensor?: new () => WebAmbientLightSensor }).AmbientLightSensor
     if (!SensorCtor) {
-      setSupportsProximity(false)
+      setSupportsAmbientLight(false)
       return
     }
 
-    let sensor: WebProximitySensor | null = null
+    let sensor: WebAmbientLightSensor | null = null
 
     try {
       sensor = new SensorCtor()
-      setSupportsProximity(true)
+      setSupportsAmbientLight(true)
 
       const handleReading = () => {
         if (!sensor) return
-        const nearThreshold = Math.min(5, sensor.max || 5)
-        setIsNearFace(sensor.distance <= nearThreshold)
+        // Lower lux usually means the top sensor area is occluded by a face/hand.
+        setIsNearFace(sensor.illuminance <= 20)
       }
 
       const handleError = () => {
-        setSupportsProximity(false)
+        setSupportsAmbientLight(false)
+        setIsNearFace(false)
       }
 
       sensor.addEventListener('reading', handleReading)
@@ -91,7 +86,8 @@ export function CallRoom({ session }: CallRoomProps) {
         sensor?.stop()
       }
     } catch {
-      setSupportsProximity(false)
+      setSupportsAmbientLight(false)
+      setIsNearFace(false)
     }
   }, [isDialing, isInCall])
 
@@ -105,13 +101,9 @@ export function CallRoom({ session }: CallRoomProps) {
   const isCallActive = isInCall || isDialing
   const screenIsOff = isCallActive && (isNearFace || manualScreenOff)
 
-  const earModeHint = useMemo(() => {
-    if (supportsProximity) {
-      return 'Auto ear mode is enabled. Screen dims when phone is near your face.'
-    }
-
-    return 'Auto proximity not supported on this browser. Use Ear mode manually.'
-  }, [supportsProximity])
+  const earModeHint = supportsAmbientLight
+    ? 'Auto ear mode is enabled. Screen dims in very low ambient light.'
+    : 'Ambient light sensor is not supported on this browser. Use Ear mode manually.'
 
   return (
     <div className="relative flex h-full min-h-[calc(100vh-10rem)] w-full items-center justify-center overflow-hidden px-3 py-4 md:px-6 md:py-8">
@@ -198,7 +190,7 @@ export function CallRoom({ session }: CallRoomProps) {
 
         {!channelConnected ? (
           <div className="mt-3 inline-flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
+            <img src="/animated_heart_icon.svg" alt="Loading" className="size-3" />
             Connecting signaling channel...
           </div>
         ) : null}

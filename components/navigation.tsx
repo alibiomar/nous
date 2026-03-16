@@ -48,7 +48,7 @@ export function Navigation() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="glass-panel fixed left-4 top-4 z-50 hidden h-[calc(100vh-2rem)] w-68 flex-col rounded-3xl p-4 md:flex">
+      <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-68 flex-col rounded-3xl p-4 md:flex">
         <Link href="/feed" className="flex items-center gap-3 rounded-2xl px-2 py-1" aria-label="Go to feed">
           <Image src="/logo.svg" alt="Nous logo" width={64} height={64} className="h-12 w-auto" />
         </Link>
@@ -82,10 +82,10 @@ export function Navigation() {
           onClick={handleLogout}
           variant="outline"
           disabled={isLoggingOut}
-          className="mt-auto h-11 rounded-2xl border-border/70 bg-background/60 hover:bg-background/80"
+          className="mt-auto h-11 rounded-2xl hover:text-primary cursor-pointer border-border/70 bg-background/60 hover:bg-background/80"
           title="Logout"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="mr-2 h-4 w-4 " />
           {isLoggingOut ? 'Logging out...' : 'Logout'}
         </Button>
       </aside>

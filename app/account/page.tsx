@@ -170,7 +170,10 @@ export default function AccountPage() {
           </CardHeader>
           <CardContent>
           {isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading profile...</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+              <span>Loading profile...</span>
+            </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="rounded-2xl border border-border/70 bg-background/50 p-4">

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Heart, Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -104,8 +104,9 @@ export function PhotoFeed({ refreshSignal = 0 }: PhotoFeedProps) {
     <div className="space-y-6">
       <div className="space-y-6">
         {isLoading ? (
-          <div className="text-center py-12 text-text-secondary">
-            Loading moments...
+          <div className="flex items-center justify-center gap-2 py-12 text-text-secondary">
+            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+            <span>Loading moments...</span>
           </div>
         ) : posts.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
@@ -436,7 +437,7 @@ function PostCard({
                 onClick={handleUpdatePost}
                 disabled={updatingPost}
               >
-                {updatingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                {updatingPost ? <img src="/animated_heart_icon.svg" alt="Loading" className="w-4 h-4" /> : 'Save'}
               </Button>
             </div>
           </div>
@@ -489,8 +490,9 @@ function PostCard({
           {/* Comments List */}
           <div className="space-y-3 max-h-64 overflow-y-auto">
             {isLoadingComments ? (
-              <div className="text-center py-4 text-text-secondary text-sm">
-                Loading comments...
+              <div className="flex items-center justify-center gap-2 py-4 text-text-secondary text-sm">
+                <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+                <span>Loading comments...</span>
               </div>
             ) : comments.length === 0 ? (
               <div className="text-center py-4 text-text-secondary text-sm">
@@ -613,7 +615,7 @@ function PostCard({
               size="sm"
               className="self-start"
             >
-              {isPostingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post'}
+              {isPostingComment ? <img src="/animated_heart_icon.svg" alt="Loading" className="w-4 h-4" /> : 'Post'}
             </Button>
           </div>
         </div>

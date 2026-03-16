@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { Film, Plus, Loader2, Maximize2, Play, Square } from 'lucide-react';
+import { Film, Plus, Maximize2, Play, Square } from 'lucide-react';
 import { parseYouTubeUrl } from '@/lib/youtube';
 
 interface MediaItem {
@@ -427,7 +427,7 @@ export function GlobalMediaPlayer() {
 
   const containerClasses = isMusicPage
     ? "fixed top-20 md:top-0 left-0 md:left-72 right-0 bottom-[80px] md:bottom-0 z-10 overflow-y-auto bg-transparent"
-    : "fixed bottom-[84px] md:bottom-6 right-4 md:right-6 z-50";
+    : "fixed top-[84px] md:top-6 left-4 md:left-6 z-50";
 
   return (
     <div
@@ -841,7 +841,7 @@ function AddMediaModal({
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                <img src="/animated_heart_icon.svg" alt="Loading" className="w-4 h-4 mr-2" />
                 Adding...
               </>
             ) : (
