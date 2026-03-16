@@ -57,15 +57,15 @@ export default function MessagesPage() {
 
   if (isLoading || isCheckingSession) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading...</p>
+      <div className="mx-3 mt-1 flex h-full min-h-[60vh] items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
+        <p className="text-muted-foreground">Loading your conversations...</p>
       </div>
     );
   }
 
   if (!activeUser) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="mx-3 mt-1 flex h-full min-h-[60vh] items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
         <p className="text-muted-foreground">Redirecting to login...</p>
       </div>
     );

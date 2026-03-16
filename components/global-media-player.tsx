@@ -403,7 +403,7 @@ export function GlobalMediaPlayer() {
   }
 
   const containerClasses = isMusicPage
-    ? "fixed top-16 md:top-0 left-0 md:left-72 right-0 bottom-[80px] md:bottom-0 z-10 overflow-y-auto bg-background"
+    ? "fixed top-20 md:top-0 left-0 md:left-72 right-0 bottom-[80px] md:bottom-0 z-10 overflow-y-auto bg-transparent"
     : "fixed bottom-[84px] md:bottom-6 right-4 md:right-6 z-50";
 
   return (
@@ -420,19 +420,33 @@ export function GlobalMediaPlayer() {
             }
       }
     >
-      <div className={isMusicPage ? "max-w-3xl mx-auto w-full px-4 md:px-8 py-6 md:py-8 mt-2" : "w-full"}>
+      <div className={isMusicPage ? "mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8" : "w-full"}>
         {isMusicPage && (
           <>
-            {/* Page Header */}
-            <div className="mb-8 border-b border-border pb-4">
-              <h1 className="font-serif text-3xl font-semibold text-foreground">Media</h1>
-              <p className="text-sm text-text-secondary mt-2">Share YouTube videos and playlists in sync</p>
+            <div className="glass-panel mb-6 rounded-3xl p-5 md:p-7">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared listening room</p>
+              <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground md:text-4xl">Media</h1>
+              <p className="mt-2 text-sm text-text-secondary md:text-base">Share YouTube videos and playlists in sync.</p>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Room mode</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Synchronized playback</p>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Source</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">YouTube video or playlist</p>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Live and collaborative</p>
+                </div>
+              </div>
             </div>
 
-            {/* Add Media Button */}
             <Button
               onClick={() => setShowAddModal(true)}
-              className="w-full mb-8 gap-2 h-12 font-medium"
+              className="mb-6 h-12 w-full gap-2 rounded-2xl font-medium"
             >
               <Plus className="w-5 h-5" />
               Share YouTube
@@ -466,11 +480,11 @@ export function GlobalMediaPlayer() {
           </button>
         </div>
       ) : isLoading && isMusicPage ? (
-        <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+        <div className="glass-panel rounded-3xl p-12 text-center">
           <p className="text-text-secondary">Loading media...</p>
         </div>
       ) : currentMedia ? (
-        <div className={`border border-border bg-card shadow-sm ${isMusicPage ? 'rounded-t-xl overflow-hidden' : 'rounded-xl'}`}>
+        <div className={`glass-panel border border-border/70 ${isMusicPage ? 'overflow-hidden rounded-t-3xl' : 'rounded-2xl'}`}>
           {/* Media Info */}
           <div className={`p-4 flex items-center gap-3 ${isMusicPage ? 'md:p-6 md:gap-4 md:items-start border-b border-border' : ''}`}>
             {isMusicPage && (
@@ -501,7 +515,7 @@ export function GlobalMediaPlayer() {
           </div>
         </div>
       ) : isMusicPage ? (
-        <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+        <div className="glass-panel rounded-3xl p-12 text-center">
           <p className="text-text-secondary mb-2">No media playing yet</p>
           <p className="text-sm text-text-tertiary">
             Click "Share YouTube" to add content
@@ -512,7 +526,7 @@ export function GlobalMediaPlayer() {
       {/* Persistent Player Mount (single instance across routes) */}
       {currentMedia && parsedYouTube && (
         <div
-          className={isMusicPage ? 'border border-t-0 border-border overflow-hidden bg-secondary rounded-b-xl shadow-sm' : 'absolute top-0 h-px w-px overflow-hidden pointer-events-none'}
+          className={isMusicPage ? 'glass-panel border border-t-0 border-border/70 overflow-hidden rounded-b-3xl' : 'absolute top-0 h-px w-px overflow-hidden pointer-events-none'}
           style={isMusicPage ? undefined : { left: -10000 }}
         >
           <YouTubeSyncPlayer
@@ -527,7 +541,7 @@ export function GlobalMediaPlayer() {
       )}
 
       {currentMedia && !parsedYouTube && isMusicPage && (
-        <div className="border border-t-0 border-border bg-secondary p-6 rounded-b-xl shadow-sm">
+        <div className="glass-panel border border-t-0 border-border/70 rounded-b-3xl p-6">
           <p className="text-sm text-text-secondary text-center">
             Invalid YouTube URL.
           </p>
@@ -751,9 +765,9 @@ function AddMediaModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+      <div className="glass-panel-strong w-full max-w-md overflow-hidden rounded-3xl border border-border/70">
         {/* Header */}
-        <div className="p-6 border-b border-border bg-secondary">
+        <div className="p-6 border-b border-border/70 bg-background/60">
           <h2 className="font-serif text-2xl font-semibold text-foreground">Share Media</h2>
         </div>
 
@@ -768,7 +782,7 @@ function AddMediaModal({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Paste a YouTube video or playlist URL..."
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-text-tertiary"
+              className="w-full px-4 py-2 bg-background/70 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-text-tertiary"
               disabled={isLoading}
               autoFocus
             />

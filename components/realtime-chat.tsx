@@ -53,10 +53,12 @@ export const RealtimeChat = ({
     sendMessage,
     isConnected,
     partnerIsTyping,
+    peerDirectory,
     broadcastEditMessage,
     broadcastDeleteMessage,
     broadcastUnreadIncrement,
     broadcastTypingStatus,
+    broadcastPeerPresence,
     updateMessageLocally,
     deleteMessageLocally,
   } = useRealtimeChat({
@@ -138,6 +140,25 @@ export const RealtimeChat = ({
       setIsStartingCall(false)
     }
   }, [callPartner, inviteAndStartCall, isConnected, isStartingCall, roomName])
+
+  useEffect(() => {
+    if (!isConnected) {
+      return
+    }
+
+    const heartbeatId = `${currentUserId}-online`
+    broadcastPeerPresence(heartbeatId)
+
+    const interval = setInterval(() => {
+      broadcastPeerPresence(heartbeatId)
+    }, 15000)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [broadcastPeerPresence, currentUserId, isConnected])
+
+  const isPartnerOnline = callPartner ? Boolean(peerDirectory[callPartner.userId]) : false
 
   useEffect(() => {
     if (onMessage) {
@@ -384,30 +405,10 @@ export const RealtimeChat = ({
   )
 
   return (
-    <div className="flex flex-col h-full w-full bg-background text-foreground antialiased">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium truncate">
-            {callPartner ? `Voice call with ${callPartner.name}` : 'Voice call'}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">
-            {isStartingCall ? 'Preparing call...' : callPartner ? 'Open call page' : 'Waiting for recipient'}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleStartCall}
-          disabled={!isConnected || !callPartner || isStartingCall}
-          title="Open voice call page"
-        >
-          {isStartingCall ? <Loader2 className="size-4 animate-spin" /> : <Phone className="size-4" />}
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 w-full rounded-lg flex-col bg-background text-foreground antialiased">
 
       {/* Messages */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 pb-16 md:pb-4 space-y-4">
+      <div ref={containerRef} className="flex-1 min-h-0 w-full overflow-y-auto p-4 pb-16 md:p-6 md:pb-4 space-y-4">
         {allMessages.length === 0 ? (
           <div className="text-center text-sm text-muted-foreground">
             No messages yet. Start the conversation!
@@ -488,7 +489,7 @@ export const RealtimeChat = ({
       {/* Message input */}
       <form
         onSubmit={handleSendMessage}
-        className="fixed inset-x-0 bottom-16 z-30 flex w-full gap-2 border-t border-border bg-card/95 p-4 backdrop-blur supports-backdrop-filter:bg-card/85 md:sticky md:inset-x-auto md:bottom-0"
+        className="glass-panel sticky bottom-0 z-20 mt-2 flex w-full gap-2 rounded-2xl border border-border/70 p-3"
       >
         <input
           ref={fileInputRef}

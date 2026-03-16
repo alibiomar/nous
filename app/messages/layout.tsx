@@ -14,8 +14,7 @@ export default function MessagesLayout({
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      {/* Full height layout for chat */}
-      <main className="md:ml-72 transition-all duration-300 pt-16 pb-20 md:pt-0 md:pb-0   md:h-screen">
+      <main className="h-[calc(100dvh-9rem)] pt-20 pb-24 md:ml-72 md:h-screen md:pt-0 md:pb-0">
         {children}
       </main>
     </div>

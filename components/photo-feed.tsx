@@ -111,7 +111,7 @@ export function PhotoFeed({ refreshSignal = 0 }: PhotoFeedProps) {
           <div className="rounded-xl border border-border bg-card p-12 text-center">
             <p className="text-text-secondary mb-2">No moments yet</p>
             <p className="text-sm text-text-tertiary">
-              Tap + next to Feed to share your first moment
+              Tap "Share moment" to post your first memory
             </p>
           </div>
         ) : (

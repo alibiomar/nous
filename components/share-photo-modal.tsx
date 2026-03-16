@@ -145,7 +145,7 @@ export function SharePhotoModal({
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl">Share a Photo</DialogTitle>
           <DialogDescription>
-            Upload a moment and add a caption for your shared feed.
+            Upload a moment and add a caption for your shared timeline.
           </DialogDescription>
         </DialogHeader>
 

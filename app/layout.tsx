@@ -25,15 +25,14 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: 'Nous',
   description: 'A private space for two',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
+        url: '/icon.svg',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/icon-dark-32x32.png',
+        url: '/icon.svg',
         media: '(prefers-color-scheme: dark)',
       },
       {

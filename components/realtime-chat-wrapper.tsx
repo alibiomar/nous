@@ -1,9 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, Phone } from 'lucide-react';
 import { RealtimeChat } from '@/components/realtime-chat';
 import { useCurrentUserImage } from '@/hooks/use-current-user-image';
 import type { ChatMessage } from '@/hooks/use-realtime-chat';
+import { createClient } from '@/lib/client';
+import { Button } from '@/components/ui/button';
+import { useCall } from '@/contexts/call';
 
 interface RealtimeChatWrapperProps {
   currentUserId: string;
@@ -14,8 +18,13 @@ export function RealtimeChatWrapper({
   currentUserId,
   currentUserName,
 }: RealtimeChatWrapperProps) {
+  const { inviteAndStartCall } = useCall();
+  const supabase = createClient();
   const [initialMessages, setInitialMessages] = useState<ChatMessage[]>([]);
+  const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [onlinePeerIds, setOnlinePeerIds] = useState<Set<string>>(new Set());
+  const [isStartingCall, setIsStartingCall] = useState(false);
   const currentUserAvatarUrl = useCurrentUserImage();
 
   // Fetch initial message history from database
@@ -49,10 +58,95 @@ export function RealtimeChatWrapper({
 
     loadMessages();
   }, []);
+
+  useEffect(() => {
+    const presenceChannel = supabase.channel('default-chat-room', {
+      config: {
+        presence: {
+          key: currentUserId,
+        },
+      },
+    });
+
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState() as Record<string, unknown>;
+        const ids = new Set<string>();
+
+        for (const userId of Object.keys(state)) {
+          if (userId !== currentUserId) {
+            ids.add(userId);
+          }
+        }
+
+        setOnlinePeerIds(ids);
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            userId: currentUserId,
+            onlineAt: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [currentUserId, supabase]);
+
+  const messagePool = liveMessages.length > 0 ? liveMessages : initialMessages;
+  const peer = useMemo(() => {
+    const newestPeerMessage = [...messagePool]
+      .reverse()
+      .find((message) => {
+        const peerId = message.sender_id ?? message.user?.id;
+        return Boolean(peerId && peerId !== currentUserId);
+      });
+
+    if (!newestPeerMessage) {
+      return null;
+    }
+
+    const peerId = newestPeerMessage.sender_id ?? newestPeerMessage.user?.id;
+    if (!peerId) {
+      return null;
+    }
+
+    return {
+      id: peerId,
+      name: newestPeerMessage.user?.name?.trim() || 'Unknown user',
+    };
+  }, [currentUserId, messagePool]);
+
+  const peerStatusLabel = peer
+    ? onlinePeerIds.has(peer.id)
+      ? 'Online'
+      : 'Offline'
+    : 'Waiting for peer';
+
+  const handleStartCall = async () => {
+    if (!peer || isStartingCall) {
+      return;
+    }
+
+    setIsStartingCall(true);
+    try {
+      await inviteAndStartCall({
+        partnerUserId: peer.id,
+        partnerName: peer.name,
+        baseRoomName: 'default-chat-room',
+      });
+    } catch (error) {
+      console.error('Failed to start call from header:', error);
+    } finally {
+      setIsStartingCall(false);
+    }
+  };
  
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
+      <div className="mx-3 mt-1 flex h-[calc(100dvh-9rem)] min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6 md:h-full">
         <div className="text-center">
           <div className="text-sm text-text-secondary">Loading messages...</div>
         </div>
@@ -61,22 +155,41 @@ export function RealtimeChatWrapper({
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-background">
-      {/* Chat Header */}
-      <div className="px-4 md:px-6 py-4 border-b border-border">
-        <h1 className="text-xl md:text-2xl font-serif font-semibold text-foreground">Messages</h1>
-        <p className="text-xs md:text-sm text-muted-foreground mt-1">Real-time conversation</p>
-      </div>
-      
-      {/* Chat Content */}
-      <div className="flex-1 overflow-hidden">
-        <RealtimeChat
-          roomName="default-chat-room"
-          username={currentUserName}
-          currentUserId={currentUserId}
-          userAvatarUrl={currentUserAvatarUrl}
-          messages={initialMessages}
-         />
+    <div className="h-[calc(100dvh-10rem)] min-h-0 w-full overflow-hidden bg-background md:h-full">
+      <div className="grid h-full gap-4 px-3 pb-3 md:gap-5 md:px-6 md:py-4">
+        <div className="glass-panel flex h-full min-h-0 flex-col rounded-3xl border border-border/70 p-3 md:p-4">
+          <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-lg font-semibold text-foreground md:text-xl">
+                  {peer ? peer.name : 'No peer yet'}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground md:text-sm">{isStartingCall ? 'Preparing call...' : peerStatusLabel}</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleStartCall}
+                disabled={!peer || isStartingCall}
+                title="Open voice call page"
+              >
+                {isStartingCall ? <Loader2 className="size-4 animate-spin" /> : <Phone className="size-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 min-h-0 rounded-xl flex-1 overflow-hidden">
+            <RealtimeChat
+              roomName="default-chat-room"
+              username={currentUserName}
+              currentUserId={currentUserId}
+              userAvatarUrl={currentUserAvatarUrl}
+              messages={initialMessages}
+              onMessage={setLiveMessages}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
+import { Cake, Mail, User2 } from 'lucide-react';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -141,44 +142,57 @@ export default function AccountPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="pb-4 border-b border-border">
-        <h1 className="text-3xl font-serif font-semibold text-foreground">Account</h1>
-        <p className="text-sm text-muted-foreground mt-2">Manage your profile and settings</p>
-      </div>
+    <div className="space-y-6 md:space-y-8">
+      <section className="glass-panel rounded-3xl p-5 md:p-7">
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Personal space</p>
+        <h1 className="mt-2 text-3xl font-serif font-semibold text-foreground md:text-4xl">Account</h1>
+        <p className="mt-2 text-sm text-muted-foreground md:text-base">Manage your profile, photo, and personal details.</p>
+      </section>
 
-      {/* Account Form Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile Information</CardTitle>
-          <CardDescription>Update your photo and personal details.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="glass-panel rounded-3xl p-5">
+          <p className="text-sm font-medium text-foreground">Profile preview</p>
+          <div className="mt-4 flex flex-col items-center gap-3 rounded-2xl border border-border/70 bg-background/55 px-4 py-5 text-center">
+            <CurrentUserAvatar
+              size="xl"
+              previewUrl={previewUrl}
+              showBorder
+            />
+            <p className="max-w-full truncate text-base font-semibold text-foreground">{name || 'Your name'}</p>
+            <p className="max-w-full truncate text-xs text-muted-foreground">{email || 'you@example.com'}</p>
+          </div>
+        </aside>
+
+        <Card className="glass-panel rounded-3xl border-border/70 bg-transparent shadow-none">
+          <CardHeader>
+            <CardTitle>Profile Information</CardTitle>
+            <CardDescription>Update your photo and personal details.</CardDescription>
+          </CardHeader>
+          <CardContent>
           {isLoading ? (
             <div className="text-sm text-muted-foreground">Loading profile...</div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-                <CurrentUserAvatar 
-                  size="xl"
-                  previewUrl={previewUrl}
-                  showBorder
-                />
-                <div className="flex-1 space-y-2">
+              <div className="rounded-2xl border border-border/70 bg-background/50 p-4">
+                <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Profile photo</label>
-                  <Input type="file" accept="image/*" onChange={handleFileChange} />
-                  <p className="text-xs text-muted-foreground">PNG or JPG up to 5MB.</p>
+                  <Input type="file" accept="image/*" onChange={handleFileChange} className="bg-primary/70 cursor-pointer" />
                 </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Email</label>
+                  <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Mail className="h-4 w-4 text-primary" />
+                    Email
+                  </label>
                   <Input value={email} disabled className="bg-secondary" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Name</label>
+                  <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <User2 className="h-4 w-4 text-primary" />
+                    Name
+                  </label>
                   <Input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -186,7 +200,10 @@ export default function AccountPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Birthday</label>
+                  <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Cake className="h-4 w-4 text-primary" />
+                    Birthday
+                  </label>
                   <Input
                     type="date"
                     value={birthday}
@@ -208,14 +225,15 @@ export default function AccountPage() {
               )}
 
               <CardFooter className="px-0">
-                <Button type="submit" disabled={isSaving || !name.trim()}>
+                <Button type="submit" disabled={isSaving || !name.trim()} className="h-11 rounded-2xl px-5">
                   {isSaving ? 'Saving...' : 'Save changes'}
                 </Button>
               </CardFooter>
             </form>
           )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }

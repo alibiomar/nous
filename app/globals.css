@@ -4,20 +4,28 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Modern Minimal Color Palette */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f7fa;
-  --bg-tertiary: #eef1f6;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
-  --border-light: #e2e8f0;
-  --border-medium: #cbd5e1;
-  --accent-color: #3b82f6;
-  --accent-light: #eff6ff;
-  --accent-dark: #1e40af;
-  --success: #16a34a;
-  --error: #dc2626;
+  /* Warm Social Glass Palette */
+  --coral: #fa8b79;
+  --apricot: #f2c1a5;
+  --espresso: #3a362d;
+  --ivory: #eae9e4;
+  --mist: rgba(234, 233, 228, 0.64);
+  --mist-strong: rgba(234, 233, 228, 0.8);
+  --glass-edge: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 16px 40px rgba(58, 54, 45, 0.12);
+  --bg-primary: var(--ivory);
+  --bg-secondary: #f5e8df;
+  --bg-tertiary: #f8ddd0;
+  --text-primary: var(--espresso);
+  --text-secondary: #5a554a;
+  --text-tertiary: #746f64;
+  --border-light: rgba(58, 54, 45, 0.16);
+  --border-medium: rgba(58, 54, 45, 0.24);
+  --accent-color: var(--coral);
+  --accent-light: #ffe9df;
+  --accent-dark: #dc6e5c;
+  --success: #3f8a5f;
+  --error: #bf4e45;
 
   /* Design Tokens */
   --background: var(--bg-primary);
@@ -56,20 +64,19 @@
 }
 
 .dark {
-  /* Modern Minimal Dark Mode */
-  --bg-primary: #0f172a;
-  --bg-secondary: #1a1f3a;
-  --bg-tertiary: #283456;
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-tertiary: #94a3b8;
-  --border-light: #334155;
-  --border-medium: #475569;
-  --accent-color: #60a5fa;
-  --accent-light: #0c2340;
-  --accent-dark: #93c5fd;
-  --success: #22c55e;
-  --error: #ef5350;
+  --bg-primary: #2b2720;
+  --bg-secondary: #342f27;
+  --bg-tertiary: #433d33;
+  --text-primary: #f4e8df;
+  --text-secondary: #dec9bc;
+  --text-tertiary: #c8ad9b;
+  --border-light: rgba(242, 193, 165, 0.24);
+  --border-medium: rgba(242, 193, 165, 0.4);
+  --accent-color: #fa8b79;
+  --accent-light: #4d302a;
+  --accent-dark: #ffc1aa;
+  --success: #77c58f;
+  --error: #ff8e7d;
 
   /* Design Tokens */
   --background: var(--bg-primary);
@@ -79,15 +86,15 @@
   --popover: var(--bg-secondary);
   --popover-foreground: var(--text-primary);
   --primary: var(--accent-color);
-  --primary-foreground: #0f172a;
+  --primary-foreground: #2b2720;
   --secondary: var(--bg-tertiary);
   --secondary-foreground: var(--text-primary);
   --muted: var(--bg-tertiary);
   --muted-foreground: var(--text-tertiary);
   --accent: var(--accent-color);
-  --accent-foreground: #0f172a;
+  --accent-foreground: #2b2720;
   --destructive: var(--error);
-  --destructive-foreground: #0f172a;
+  --destructive-foreground: #2b2720;
   --border: var(--border-light);
   --input: var(--bg-secondary);
   --ring: var(--accent-color);
@@ -99,7 +106,7 @@
   --sidebar: var(--bg-secondary);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--accent-color);
-  --sidebar-primary-foreground: #0f172a;
+  --sidebar-primary-foreground: #2b2720;
   --sidebar-accent: var(--bg-tertiary);
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-light);
@@ -155,6 +162,13 @@
   body {
     @apply bg-background text-foreground;
     letter-spacing: -0.3px;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 8% 12%, rgba(250, 139, 121, 0.36), transparent 34%),
+      radial-gradient(circle at 82% 6%, rgba(242, 193, 165, 0.42), transparent 38%),
+      radial-gradient(circle at 50% 100%, rgba(58, 54, 45, 0.12), transparent 35%),
+      linear-gradient(180deg, #efe3da 0%, #eae9e4 48%, #e6e3dc 100%);
+    background-attachment: fixed;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif font-semibold tracking-tight;
@@ -162,6 +176,20 @@
 }
 
 @layer utilities {
+  .glass-panel {
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.42), var(--mist));
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .glass-panel-strong {
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.58), var(--mist-strong));
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 48px rgba(58, 54, 45, 0.18);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+  }
   .shadow-xs {
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
