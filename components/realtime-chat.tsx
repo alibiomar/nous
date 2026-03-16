@@ -517,7 +517,7 @@ export const RealtimeChat = ({
         <Input
           className={cn(
             'pointer-events-auto rounded-full bg-background text-sm transition-all duration-300',
-            isConnected && (newMessage.trim() || imagePreviewUrl)
+            (newMessage.trim() || imagePreviewUrl)
               ? 'w-[calc(100%-80px)]'
               : 'w-full'
           )}
@@ -533,7 +533,7 @@ export const RealtimeChat = ({
               broadcastTypingStatus(false)
             }
           }}
-          placeholder={isConnected ? 'Type a message...' : 'Type a message (syncing...)'}
+          placeholder="Type a message..."
         />
         {(newMessage.trim() || imagePreviewUrl) && (
           <Button

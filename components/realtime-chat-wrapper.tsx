@@ -89,7 +89,7 @@ export function RealtimeChatWrapper({
   }, []);
 
   useEffect(() => {
-    const presenceChannel = supabase.channel('default-chat-room', {
+    const presenceChannel = supabase.channel('presence:default-chat-room', {
       config: {
         presence: {
           key: currentUserId,
