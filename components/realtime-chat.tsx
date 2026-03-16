@@ -489,7 +489,7 @@ export const RealtimeChat = ({
       {/* Message input */}
       <form
         onSubmit={handleSendMessage}
-        className="glass-panel mt-2 flex w-full gap-2 rounded-2xl border border-border/70 p-3"
+        className="glass-panel pointer-events-auto mt-2 flex w-full gap-2 rounded-2xl border border-border/70 p-3"
       >
         <input
           ref={fileInputRef}
@@ -517,7 +517,7 @@ export const RealtimeChat = ({
 
         <Input
           className={cn(
-            'rounded-full bg-background text-sm transition-all duration-300',
+            'pointer-events-auto rounded-full bg-background text-sm transition-all duration-300',
             isConnected && (newMessage.trim() || imagePreviewUrl)
               ? 'w-[calc(100%-80px)]'
               : 'w-full'
@@ -534,8 +534,8 @@ export const RealtimeChat = ({
               broadcastTypingStatus(false)
             }
           }}
-          placeholder="Type a message..."
-          disabled={!isConnected}
+          placeholder={isConnected ? 'Type a message...' : 'Connecting chat...'}
+          readOnly={!isConnected}
         />
         {isConnected && (newMessage.trim() || imagePreviewUrl) && (
           <Button
