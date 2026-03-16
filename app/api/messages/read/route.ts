@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
-import { invalidateMessagesCacheForUsers } from '@/lib/api-cache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -64,8 +63,6 @@ export async function PUT(request: NextRequest) {
     if (error) {
       throw error;
     }
-
-    invalidateMessagesCacheForUsers([session.userId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

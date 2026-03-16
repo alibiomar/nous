@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
-import { feedPostsCacheKey, invalidateFeedPostsCache } from '@/lib/api-cache';
 import { decryptFields, encryptFields, encryptValue } from '@/lib/db-encryption';
-import { getOrSetCache } from '@/lib/server-cache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -85,52 +83,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const cacheKey = feedPostsCacheKey(session.userId);
-
-    const decryptedPosts = await getOrSetCache(cacheKey, 15_000, async () => {
-      // Cache the personalized feed briefly to reduce repeated DB reads.
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select(
-          `
-          *,
-          user:users(id, name, email, avatar_url),
-          likes(count),
-          comments(count)
+    // Get all posts ordered by created_at descending
+    const { data: posts, error } = await supabase
+      .from('posts')
+      .select(
         `
-        )
-        .order('created_at', { ascending: false });
+        *,
+        user:users(id, name, email, avatar_url),
+        likes(count),
+        comments(count)
+      `
+      )
+      .order('created_at', { ascending: false });
 
-      if (error) {
-        throw error;
+    if (error) {
+      throw error;
+    }
+
+    const postIds = (posts || []).map((post) => post.id);
+    let likedPostIds = new Set<string>();
+
+    if (postIds.length > 0) {
+      const { data: userLikes, error: likesError } = await supabase
+        .from('likes')
+        .select('post_id')
+        .eq('user_id', session.userId)
+        .in('post_id', postIds);
+
+      if (likesError) {
+        throw likesError;
       }
 
-      const postIds = (posts || []).map((post) => post.id);
-      let likedPostIds = new Set<string>();
+      likedPostIds = new Set((userLikes || []).map((like) => like.post_id));
+    }
 
-      if (postIds.length > 0) {
-        const { data: userLikes, error: likesError } = await supabase
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', session.userId)
-          .in('post_id', postIds);
+    const postsWithLikeState = (posts || []).map((post) => ({
+      ...post,
+      liked_by_me: likedPostIds.has(post.id),
+    }));
 
-        if (likesError) {
-          throw likesError;
-        }
-
-        likedPostIds = new Set((userLikes || []).map((like) => like.post_id));
-      }
-
-      const postsWithLikeState = (posts || []).map((post) => ({
-        ...post,
-        liked_by_me: likedPostIds.has(post.id),
-      }));
-
-      return postsWithLikeState.map((post) =>
-        decryptPostRecord(post as Record<string, unknown>)
-      );
-    });
+    const decryptedPosts = postsWithLikeState.map((post) =>
+      decryptPostRecord(post as Record<string, unknown>)
+    );
 
     return NextResponse.json(decryptedPosts);
   } catch (error) {
@@ -212,8 +206,6 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
-
-    invalidateFeedPostsCache();
 
     return NextResponse.json(
       decryptPostRecord(post as Record<string, unknown>),

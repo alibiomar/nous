@@ -6,6 +6,7 @@ import { RealtimeChat } from '@/components/realtime-chat';
 import { useCurrentUserImage } from '@/hooks/use-current-user-image';
 import type { ChatMessage } from '@/hooks/use-realtime-chat';
 import { createClient } from '@/lib/client';
+import { readDeviceCache, writeDeviceCache } from '@/lib/device-cache';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/contexts/call';
 
@@ -13,6 +14,8 @@ interface RealtimeChatWrapperProps {
   currentUserId: string;
   currentUserName: string;
 }
+
+const DEVICE_MESSAGES_CACHE_TTL_MS = 45_000;
 
 function hasOtherPeerInPresence(
   state: Record<string, unknown>,
@@ -59,8 +62,16 @@ export function RealtimeChatWrapper({
   // Fetch initial message history from database
   useEffect(() => {
     const loadMessages = async () => {
+      const deviceCacheKey = `nous:messages:${currentUserId}`;
+      const cachedMessages = readDeviceCache<ChatMessage[]>(deviceCacheKey);
+
+      if (cachedMessages && cachedMessages.length > 0) {
+        setInitialMessages(cachedMessages);
+        setIsLoading(false);
+      }
+
       try {
-        const response = await fetch('/api/messages');
+        const response = await fetch('/api/messages?limit=200');
         if (response.ok) {
           const messages = await response.json();
           // Transform to ChatMessage format
@@ -77,6 +88,7 @@ export function RealtimeChatWrapper({
             createdAt: msg.created_at,
           }));
           setInitialMessages(transformedMessages);
+          writeDeviceCache(deviceCacheKey, transformedMessages, DEVICE_MESSAGES_CACHE_TTL_MS);
         }
       } catch (error) {
         console.error('Failed to load initial messages:', error);
@@ -86,7 +98,7 @@ export function RealtimeChatWrapper({
     };
 
     loadMessages();
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     const presenceChannel = supabase.channel('presence:default-chat-room', {
@@ -127,6 +139,16 @@ export function RealtimeChatWrapper({
   }, [currentUserId, supabase]);
 
   const messagePool = liveMessages.length > 0 ? liveMessages : initialMessages;
+
+  useEffect(() => {
+    const deviceCacheKey = `nous:messages:${currentUserId}`;
+    const latestMessages = liveMessages.length > 0 ? liveMessages : initialMessages;
+
+    if (latestMessages.length > 0) {
+      writeDeviceCache(deviceCacheKey, latestMessages, DEVICE_MESSAGES_CACHE_TTL_MS);
+    }
+  }, [currentUserId, initialMessages, liveMessages]);
+
   const peer = useMemo(() => {
     const newestPeerMessage = [...messagePool]
       .reverse()

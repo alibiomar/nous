@@ -14,6 +14,13 @@ const authClient = createClient(supabaseUrl, supabaseAnonKey, {
 const ACCESS_TOKEN_COOKIE = 'sb-access-token';
 const REFRESH_TOKEN_COOKIE = 'sb-refresh-token';
 
+function isCookieMutationContextError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.includes('Cookies can only be modified in a Server Action or Route Handler')
+  );
+}
+
 export interface AuthSessionUser {
   userId: string;
   email: string;
@@ -72,7 +79,18 @@ export async function getSession(): Promise<AuthSessionUser | null> {
     return null;
   }
 
-  await setAuthCookies(refreshed.session.access_token, refreshed.session.refresh_token, refreshed.session.expires_in);
+  try {
+    await setAuthCookies(
+      refreshed.session.access_token,
+      refreshed.session.refresh_token,
+      refreshed.session.expires_in
+    );
+  } catch (error) {
+    // Server Components cannot mutate cookies during render; skip persistence in that context.
+    if (!isCookieMutationContextError(error)) {
+      throw error;
+    }
+  }
 
   const { avatarUrl, birthday } = getUserMetadataFields(refreshed.user);
   return {
@@ -108,9 +126,15 @@ export async function setAuthCookies(
 }
 
 export async function clearAuthCookies(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(ACCESS_TOKEN_COOKIE);
-  cookieStore.delete(REFRESH_TOKEN_COOKIE);
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(ACCESS_TOKEN_COOKIE);
+    cookieStore.delete(REFRESH_TOKEN_COOKIE);
+  } catch (error) {
+    if (!isCookieMutationContextError(error)) {
+      throw error;
+    }
+  }
 }
 
 

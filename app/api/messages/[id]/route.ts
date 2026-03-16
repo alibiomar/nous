@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
-import { invalidateMessagesCacheForUsers } from '@/lib/api-cache';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -84,8 +83,6 @@ export async function PATCH(
       );
     }
 
-    invalidateMessagesCacheForUsers([session.userId, message.recipient_id as string]);
-
     return NextResponse.json(
       decryptFields(message as Record<string, unknown>, ['content'])
     );
@@ -135,8 +132,6 @@ export async function DELETE(
         { status: 404 }
       );
     }
-
-    invalidateMessagesCacheForUsers([session.userId, deleted.recipient_id as string]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

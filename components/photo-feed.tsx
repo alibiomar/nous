@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/client';
+import { readDeviceCache, removeDeviceCache, writeDeviceCache } from '@/lib/device-cache';
 import { Button } from '@/components/ui/button';
 import { Heart, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -34,6 +35,9 @@ interface PhotoFeedProps {
   refreshSignal?: number;
 }
 
+const DEVICE_FEED_CACHE_KEY = 'nous:feed:posts';
+const DEVICE_FEED_CACHE_TTL_MS = 30_000;
+
 export function PhotoFeed({ refreshSignal = 0 }: PhotoFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,11 +69,18 @@ export function PhotoFeed({ refreshSignal = 0 }: PhotoFeedProps) {
   }, [refreshSignal]);
 
   const fetchPosts = async () => {
+    const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
+    if (cachedPosts && cachedPosts.length > 0) {
+      setPosts(cachedPosts);
+      setIsLoading(false);
+    }
+
     try {
       const response = await fetch('/api/posts');
       if (response.ok) {
         const data = await response.json();
         setPosts(data);
+        writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
       }
     } catch (error) {
       console.error('Failed to fetch posts:', error);
@@ -227,6 +238,7 @@ function PostCard({
         setComments([comment, ...comments]);
         setCommentCount(commentCount + 1);
         setNewComment('');
+        removeDeviceCache(DEVICE_FEED_CACHE_KEY);
       }
     } catch (error) {
       console.error('Failed to post comment:', error);
@@ -257,6 +269,8 @@ function PostCard({
         likeStateRef.current = { liked: currentLiked, likeCount: currentCount };
         setLiked(currentLiked);
         setLikeCount(currentCount);
+      } else {
+        removeDeviceCache(DEVICE_FEED_CACHE_KEY);
       }
     } catch (error) {
       console.error('Like error:', error);
@@ -284,6 +298,7 @@ function PostCard({
 
       onPostUpdated(post.id, editedPostCaption);
       setEditingPost(false);
+      removeDeviceCache(DEVICE_FEED_CACHE_KEY);
     } catch (error) {
       console.error('Failed to update post:', error);
     } finally {
@@ -304,6 +319,7 @@ function PostCard({
       }
 
       onPostRemoved(post.id);
+      removeDeviceCache(DEVICE_FEED_CACHE_KEY);
     } catch (error) {
       console.error('Failed to delete post:', error);
     }
@@ -329,6 +345,7 @@ function PostCard({
       );
       setEditingCommentId(null);
       setEditedCommentContent('');
+      removeDeviceCache(DEVICE_FEED_CACHE_KEY);
     } catch (error) {
       console.error('Failed to update comment:', error);
     }
@@ -348,6 +365,7 @@ function PostCard({
 
       setComments((current) => current.filter((comment) => comment.id !== commentId));
       setCommentCount((count) => Math.max(0, count - 1));
+      removeDeviceCache(DEVICE_FEED_CACHE_KEY);
     } catch (error) {
       console.error('Failed to delete comment:', error);
     }
