@@ -84,7 +84,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const activeCallRef = useRef<MediaConnection | null>(null)
   const callStartTimeRef = useRef<number | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  const remoteAudioRef = useRef<HTMLVideoElement | null>(null)
   // Keep volume in a ref so volume slider changes do not recreate call event bindings.
   const speakerVolumeRef = useRef(1)
   const dialAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -152,7 +152,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: false,
     })
     localStreamRef.current = stream
@@ -314,7 +318,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream
           remoteAudioRef.current.autoplay = true
+          remoteAudioRef.current.playsInline = true
           remoteAudioRef.current.muted = false
+          remoteAudioRef.current.setAttribute('playsinline', '')
+          remoteAudioRef.current.setAttribute('webkit-playsinline', '')
           remoteAudioRef.current.volume = speakerVolumeRef.current
           void remoteAudioRef.current.play().catch(() => {
             // Browser autoplay may block audio until user interaction.
@@ -814,7 +821,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           void declineInvite()
         }}
       />
-      <audio
+      <video
         ref={remoteAudioRef}
         autoPlay
         playsInline

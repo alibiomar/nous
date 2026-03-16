@@ -41,6 +41,7 @@ interface YouTubePlayer {
   pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
   getCurrentTime: () => number;
+  unMute: () => void;
 }
 
 interface YouTubePlayerOptions {
@@ -657,6 +658,9 @@ function YouTubeSyncPlayer({
                 if (hiddenPause) {
                   hiddenAutoPausedRef.current = true;
                   // Aggressively attempt to wake the player back up to keep OS audio playing in background
+                  if (typeof playerRef.current?.unMute === 'function') {
+                    playerRef.current.unMute();
+                  }
                   playerRef.current?.playVideo();
                   return;
                 }
@@ -686,9 +690,15 @@ function YouTubeSyncPlayer({
     const resumeIfHiddenPause = () => {
       // Re-trigger play immediately when backgrounding, sometimes required by iOS Safari to persist MediaSession
       if (document.hidden && isPlayingRef.current && playerRef.current) {
+        if (typeof playerRef.current.unMute === 'function') {
+          playerRef.current.unMute();
+        }
         playerRef.current.playVideo();
       } else if (!document.hidden && hiddenAutoPausedRef.current && playerRef.current) {
         hiddenAutoPausedRef.current = false;
+        if (typeof playerRef.current.unMute === 'function') {
+          playerRef.current.unMute();
+        }
         playerRef.current.playVideo();
       }
     };
@@ -726,6 +736,9 @@ function YouTubeSyncPlayer({
     if (syncEvent.action === 'play') {
       isPlayingRef.current = true;
       hiddenAutoPausedRef.current = false;
+      if (typeof playerRef.current.unMute === 'function') {
+        playerRef.current.unMute();
+      }
       playerRef.current.playVideo();
     } else {
       isPlayingRef.current = false;
