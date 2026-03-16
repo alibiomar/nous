@@ -408,7 +408,7 @@ export const RealtimeChat = ({
     <div className="flex h-full min-h-0 w-full rounded-lg flex-col bg-background text-foreground antialiased">
 
       {/* Messages */}
-      <div ref={containerRef} className="flex-1 min-h-0 w-full overflow-y-auto p-4 pb-16 md:p-6 md:pb-4 space-y-4">
+      <div ref={containerRef} className="flex-1 min-h-0 w-full overflow-y-auto p-4 pb-40 md:p-6 md:pb-4 space-y-4">
         {allMessages.length === 0 ? (
           <div className="text-center text-sm text-muted-foreground">
             No messages yet. Start the conversation!
@@ -489,7 +489,7 @@ export const RealtimeChat = ({
       {/* Message input */}
       <form
         onSubmit={handleSendMessage}
-        className="glass-panel sticky bottom-0 z-20 mt-2 flex w-full gap-2 rounded-2xl border border-border/70 p-3"
+        className="glass-panel fixed inset-x-4 bottom-21 z-60 mt-2 flex w-auto gap-2 rounded-2xl border border-border/70 p-3 md:sticky md:inset-x-auto md:bottom-0 md:z-20 md:w-full"
       >
         <input
           ref={fileInputRef}

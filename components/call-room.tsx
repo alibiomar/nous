@@ -2,13 +2,27 @@
 
 import { Loader2, Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { useCall, type CallSession } from '@/contexts/call'
 
 interface CallRoomProps {
   session: CallSession
+}
+
+interface WebProximityReading {
+  distance: number
+  max: number
+}
+
+interface WebProximitySensor {
+  addEventListener: (type: 'reading' | 'error', listener: () => void) => void
+  removeEventListener: (type: 'reading' | 'error', listener: () => void) => void
+  start: () => void
+  stop: () => void
+  distance: number
+  max: number
 }
 
 export function CallRoom({ session }: CallRoomProps) {
@@ -25,12 +39,61 @@ export function CallRoom({ session }: CallRoomProps) {
     toggleMute,
     setSpeakerVolume,
   } = useCall()
+  const [isNearFace, setIsNearFace] = useState(false)
+  const [manualScreenOff, setManualScreenOff] = useState(false)
+  const [supportsProximity, setSupportsProximity] = useState(false)
 
   useEffect(() => {
     if (!activeSession || activeSession.roomName !== session.roomName) {
       router.replace('/messages')
     }
   }, [activeSession, router, session.roomName])
+
+  useEffect(() => {
+    if (!isInCall && !isDialing) {
+      setIsNearFace(false)
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const SensorCtor = (window as unknown as { ProximitySensor?: new () => WebProximitySensor }).ProximitySensor
+    if (!SensorCtor) {
+      setSupportsProximity(false)
+      return
+    }
+
+    let sensor: WebProximitySensor | null = null
+
+    try {
+      sensor = new SensorCtor()
+      setSupportsProximity(true)
+
+      const handleReading = () => {
+        if (!sensor) return
+        const nearThreshold = Math.min(5, sensor.max || 5)
+        setIsNearFace(sensor.distance <= nearThreshold)
+      }
+
+      const handleError = () => {
+        setSupportsProximity(false)
+      }
+
+      sensor.addEventListener('reading', handleReading)
+      sensor.addEventListener('error', handleError)
+      sensor.start()
+
+      return () => {
+        sensor?.removeEventListener('reading', handleReading)
+        sensor?.removeEventListener('error', handleError)
+        sensor?.stop()
+      }
+    } catch {
+      setSupportsProximity(false)
+    }
+  }, [isDialing, isInCall])
 
   // If there is no active call session, render nothing while redirecting.
   if (!activeSession || activeSession.roomName !== session.roomName) {
@@ -39,6 +102,16 @@ export function CallRoom({ session }: CallRoomProps) {
 
   const callerInitial = activeSession.partnerName?.charAt(0)?.toUpperCase() || '?'
   const callStatus = isInCall ? 'In call' : isDialing ? 'Ringing...' : 'Connecting...'
+  const isCallActive = isInCall || isDialing
+  const screenIsOff = isCallActive && (isNearFace || manualScreenOff)
+
+  const earModeHint = useMemo(() => {
+    if (supportsProximity) {
+      return 'Auto ear mode is enabled. Screen dims when phone is near your face.'
+    }
+
+    return 'Auto proximity not supported on this browser. Use Ear mode manually.'
+  }, [supportsProximity])
 
   return (
     <div className="relative flex h-full min-h-[calc(100vh-10rem)] w-full items-center justify-center overflow-hidden px-3 py-4 md:px-6 md:py-8">
@@ -88,6 +161,17 @@ export function CallRoom({ session }: CallRoomProps) {
           </Button>
         </div>
 
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 h-11 rounded-2xl border-border/70 bg-background/55"
+          onClick={() => setManualScreenOff((current) => !current)}
+        >
+          {manualScreenOff ? 'Wake screen' : 'Ear mode'}
+        </Button>
+
+        <p className="mt-2 text-center text-xs text-muted-foreground">{earModeHint}</p>
+
         <div className="mt-4 rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -125,6 +209,16 @@ export function CallRoom({ session }: CallRoomProps) {
           </div>
         ) : null}
       </div>
+
+      {screenIsOff ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-100 bg-black"
+          onClick={() => setManualScreenOff(false)}
+          aria-label="Wake call screen"
+          title="Tap to wake"
+        />
+      ) : null}
     </div>
   )
 }
