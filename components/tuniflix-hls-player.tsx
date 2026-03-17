@@ -4,7 +4,6 @@ import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/client';
-import { proxyStream } from '@/lib/proxy-stream';
 
 const SEEK_THRESHOLD = 2;
 const SUPPRESS_MS = 200;
@@ -116,16 +115,16 @@ export function TuniflixHlsPlayer({
 
     setError(null);
     setBuffering(true);
-    recoveryAttemptsRef.current = 0; // reset on every new stream
+    recoveryAttemptsRef.current = 0;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
-    // Safari native HLS
+    // Safari native HLS — direct, no proxy needed
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = proxyStream(stream, embedReferer);
+      video.src = stream;
       return () => { video.src = ''; };
     }
 
@@ -139,11 +138,18 @@ export function TuniflixHlsPlayer({
       enableWorker: true,
       lowLatencyMode: false,
       maxBufferLength: 30,
+      // Forward the embed origin as referer on every segment request
+      // so the CDN accepts them without a proxy
+      xhrSetup: embedReferer
+        ? (xhr) => {
+            xhr.setRequestHeader('Referer', embedReferer);
+          }
+        : undefined,
     });
 
     hlsRef.current = hls;
     hls.attachMedia(video);
-    hls.loadSource(proxyStream(stream, embedReferer));
+    hls.loadSource(stream); // direct — token is already bound to user's IP
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => setBuffering(false));
 
@@ -186,7 +192,6 @@ export function TuniflixHlsPlayer({
 
     const broadcast = (action: PlaybackAction) => {
       if (suppressRef.current) return;
-
       void channel.send({
         type: 'broadcast',
         event: 'playback',
