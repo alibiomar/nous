@@ -1,5 +1,5 @@
-import chromium from 'chrome-aws-lambda';
-import { chromium as playwright, Browser } from 'playwright-core';
+import chromium from '@sparticuz/chromium';
+import { chromium as playwrightChromium, Browser } from 'playwright-core';
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://tuniflix.site';
@@ -14,7 +14,7 @@ export interface TuniflixSeason { season: string; episodes: TuniflixEpisodeItem[
 export interface TuniflixEpisodeSource { embed: string | null; stream: string | null; }
 export interface TuniflixMovieSource { title: string; embed: string | null; stream: string | null; }
 
-// --- Cache with per-key TTL ---
+// --- Cache ---
 type CacheEntry = { value: unknown; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
 
@@ -28,7 +28,6 @@ function setCached<T>(key: string, value: T, ttlMs: number): T {
   return value;
 }
 
-// Different TTLs per data type — search results change often, streams less so
 const TTL = {
   search: 5 * 60 * 1000,
   series: 30 * 60 * 1000,
@@ -36,8 +35,7 @@ const TTL = {
   movie: 30 * 60 * 1000,
 };
 
-// --- Fetch-first, Playwright fallback ---
-// For pages that DON'T need JS rendering
+// --- Lightweight fetch (no browser) ---
 async function fetchHtmlLightweight(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -52,13 +50,12 @@ async function fetchHtmlLightweight(url: string): Promise<string | null> {
     if (!res.ok) return null;
     const text = await res.text();
 
-    // Cloudflare JS challenge — must fall back to browser
     if (
       text.includes('Just a moment') ||
       text.includes('cf-browser-verification') ||
       text.includes('_cf_chl_opt')
     ) {
-      return null; // signals caller to use Playwright
+      return null;
     }
 
     return text;
@@ -67,19 +64,12 @@ async function fetchHtmlLightweight(url: string): Promise<string | null> {
   }
 }
 
-// --- Browser: one instance per serverless invocation, always cleaned up ---
+// --- Browser launch (updated) ---
 async function launchBrowser(): Promise<Browser> {
-  const executablePath = await chromium.executablePath;
-  return playwright.launch({
-    args: [
-      ...chromium.args,
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',  // essential on Lambda-like envs
-      '--disable-gpu',
-    ],
-    executablePath: executablePath ?? undefined,
-    headless: chromium.headless,
+  return playwrightChromium.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath(),
+    headless: true,
   });
 }
 
@@ -95,7 +85,6 @@ async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> 
 async function fetchHtmlWithBrowser(browser: Browser, url: string): Promise<string> {
   const page = await browser.newPage();
   try {
-    // Block resources that don't affect HTML content — big speed win
     await page.route('**/*', (route) => {
       const type = route.request().resourceType();
       if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
@@ -123,31 +112,24 @@ async function fetchHtmlWithBrowser(browser: Browser, url: string): Promise<stri
   }
 }
 
-// Smart fetch: try lightweight first, fall back to full browser
-async function fetchHtml(
-  url: string,
-  browserInstance: Browser | null = null,
-): Promise<string> {
+// --- Smart fetch: lightweight first, browser fallback ---
+async function fetchHtml(url: string, browserInstance: Browser | null = null): Promise<string> {
   const lightweight = await fetchHtmlLightweight(url);
   if (lightweight) return lightweight;
 
-  // Need a real browser
   if (browserInstance) {
     return fetchHtmlWithBrowser(browserInstance, url);
   }
 
-  // No browser provided — spin one up just for this call
   return withBrowser((browser) => fetchHtmlWithBrowser(browser, url));
 }
 
 // --- M3U8 capture ---
-// Listen on `request` (not response) — faster since we don't wait for body
 async function captureM3U8(browser: Browser, embedUrl: string): Promise<string | null> {
   const page = await browser.newPage();
   let streamUrl: string | null = null;
 
   try {
-    // Only load what's needed for the player to initialize
     await page.route('**/*', (route) => {
       const type = route.request().resourceType();
       if (['image', 'stylesheet', 'font'].includes(type)) {
@@ -158,7 +140,6 @@ async function captureM3U8(browser: Browser, embedUrl: string): Promise<string |
     });
 
     const streamPromise = new Promise<string | null>((resolve) => {
-      // request is faster than response — we get the URL before body downloads
       page.on('request', (req) => {
         if (req.url().includes('.m3u8')) resolve(req.url());
       });
@@ -208,7 +189,6 @@ export async function searchTuniflix(query: string): Promise<TuniflixSearchResul
   const cached = getCached<TuniflixSearchResult[]>(cacheKey);
   if (cached) return cached;
 
-  // Search pages are usually static — try lightweight fetch first
   const html = await fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(trimmed)}`);
   const $ = cheerio.load(html);
   const results: TuniflixSearchResult[] = [];
@@ -238,7 +218,6 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
   const cached = getCached<TuniflixSeason[]>(cacheKey);
   if (cached) return cached;
 
-  // Series pages often need JS — pass browser through to avoid re-launching per season
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/serie/${encodeURIComponent(slug)}`, browser);
     const $ = cheerio.load(html);
@@ -266,7 +245,6 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
       return a.number - b.number;
     });
 
-    // Fetch all seasons IN PARALLEL — reusing the same browser instance
     const seasonResults = await Promise.all(
       seasonCandidates.map(async (season) => {
         const seasonHtml = await fetchHtml(season.link, browser);
@@ -294,7 +272,6 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
 
     let seasons: TuniflixSeason[] = seasonResults.filter(Boolean) as TuniflixSeason[];
 
-    // Fallback: episodes listed directly on /serie page
     if (seasons.length === 0) {
       const fallback: TuniflixEpisodeItem[] = [];
       const seen = new Set<string>();
@@ -322,7 +299,6 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   if (cached) return cached;
 
   return withBrowser(async (browser) => {
-    // Episode page itself may be lightweight; embed definitely needs browser
     const html = await fetchHtml(`${BASE_URL}/episode/${encodeURIComponent(slug)}`, browser);
     const embed = normalizeUrl(cheerio.load(html)('iframe').first().attr('src'));
     const stream = embed ? await captureM3U8(browser, embed) : null;
