@@ -1,110 +1,120 @@
-import { chromium, Browser, BrowserContext } from 'playwright';
+import chromium from 'chrome-aws-lambda';
+import { chromium as playwright, Browser } from 'playwright-core';
 import * as cheerio from 'cheerio';
-import * as fsLib from 'fs';
-import * as path from 'path';
 
 const BASE_URL = 'https://tuniflix.site';
 
+// --- Types ---
 export interface TuniflixSearchResult {
-  title: string;
-  slug: string;
-  type: 'movie' | 'series';
-  image: string | null;
-  link: string;
+  title: string; slug: string; type: 'movie' | 'series';
+  image: string | null; link: string;
 }
+export interface TuniflixEpisodeItem { title: string; slug: string | null; link: string | null; }
+export interface TuniflixSeason { season: string; episodes: TuniflixEpisodeItem[]; }
+export interface TuniflixEpisodeSource { embed: string | null; stream: string | null; }
+export interface TuniflixMovieSource { title: string; embed: string | null; stream: string | null; }
 
-export interface TuniflixEpisodeItem {
-  title: string;
-  slug: string | null;
-  link: string | null;
-}
-
-export interface TuniflixSeason {
-  season: string;
-  episodes: TuniflixEpisodeItem[];
-}
-
-export interface TuniflixEpisodeSource {
-  embed: string | null;
-  stream: string | null;
-}
-
-export interface TuniflixMovieSource {
-  title: string;
-  embed: string | null;
-  stream: string | null;
-}
-
-// ------ CACHING ------
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const responseCache = new Map<string, { value: unknown; expiresAt: number }>();
+// --- Cache with per-key TTL ---
+type CacheEntry = { value: unknown; expiresAt: number };
+const cache = new Map<string, CacheEntry>();
 
 function getCached<T>(key: string): T | null {
-  const cached = responseCache.get(key);
-  if (!cached) return null;
-  if (Date.now() > cached.expiresAt) {
-    responseCache.delete(key);
-    return null;
-  }
-  return cached.value as T;
+  const entry = cache.get(key);
+  if (!entry || Date.now() > entry.expiresAt) { cache.delete(key); return null; }
+  return entry.value as T;
 }
-
-function setCached<T>(key: string, value: T): T {
-  responseCache.set(key, {
-    value,
-    expiresAt: Date.now() + CACHE_TTL_MS,
-  });
+function setCached<T>(key: string, value: T, ttlMs: number): T {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
   return value;
 }
 
-// ------ PLAYWRIGHT SINGLETON ------
-let browserState: { browser: Browser; context: BrowserContext } | null = null;
-const SESSION_FILE = path.join(process.cwd(), 'tuniflix_session.json');
+// Different TTLs per data type — search results change often, streams less so
+const TTL = {
+  search: 5 * 60 * 1000,
+  series: 30 * 60 * 1000,
+  episode: 30 * 60 * 1000,
+  movie: 30 * 60 * 1000,
+};
 
-async function getBrowserContext(): Promise<BrowserContext> {
-  if (browserState) {
-    return browserState.context;
-  }
-
-  const browser = await chromium.launch({ headless: true });
-  
-  const ctxOptions = {
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  };
-
-  const context = fsLib.existsSync(SESSION_FILE)
-    ? await browser.newContext({ ...ctxOptions, storageState: SESSION_FILE })
-    : await browser.newContext(ctxOptions);
-
-  browserState = { browser, context };
-  return context;
-}
-
-async function saveSession() {
-  if (browserState) {
-    await browserState.context.storageState({ path: SESSION_FILE });
-  }
-}
-
-async function fetchHtmlWithPlaywright(url: string): Promise<string> {
-  const context = await getBrowserContext();
-  const page = await context.newPage();
+// --- Fetch-first, Playwright fallback ---
+// For pages that DON'T need JS rendering
+async function fetchHtmlLightweight(url: string): Promise<string | null> {
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    
-    // Cloudflare check
-    let title = await page.title();
-    if (title.includes('Just a moment') || title.includes('Cloudflare')) {
-      // Waiting for challenge to pass
-      await page.waitForTimeout(6000);
-      await saveSession(); // Save the session once it passes CF
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+    const text = await res.text();
+
+    // Cloudflare JS challenge — must fall back to browser
+    if (
+      text.includes('Just a moment') ||
+      text.includes('cf-browser-verification') ||
+      text.includes('_cf_chl_opt')
+    ) {
+      return null; // signals caller to use Playwright
     }
 
-    // Many pages hydrate episode blocks after initial DOM load.
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+// --- Browser: one instance per serverless invocation, always cleaned up ---
+async function launchBrowser(): Promise<Browser> {
+  const executablePath = await chromium.executablePath;
+  return playwright.launch({
+    args: [
+      ...chromium.args,
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',  // essential on Lambda-like envs
+      '--disable-gpu',
+    ],
+    executablePath: executablePath ?? undefined,
+    headless: chromium.headless,
+  });
+}
+
+async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
+  const browser = await launchBrowser();
+  try {
+    return await fn(browser);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function fetchHtmlWithBrowser(browser: Browser, url: string): Promise<string> {
+  const page = await browser.newPage();
+  try {
+    // Block resources that don't affect HTML content — big speed win
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+
+    const title = await page.title();
+    if (title.includes('Just a moment') || title.includes('Cloudflare')) {
+      await page.waitForTimeout(7000);
+    }
+
     await page
-      .waitForSelector('a[href*="/episode/"], a[href*="/episodio/"], .se-c', {
-        timeout: 5000,
-      })
+      .waitForSelector('a[href*="/episode/"], a[href*="/episodio/"], article, .se-c', { timeout: 5000 })
       .catch(() => undefined);
 
     return await page.content();
@@ -113,31 +123,52 @@ async function fetchHtmlWithPlaywright(url: string): Promise<string> {
   }
 }
 
-// Network sniffing to catch the raw m3u8 directly rather than parsing HTML
-async function captureM3U8Playwright(embedUrl: string | null): Promise<string | null> {
-  if (!embedUrl) return null;
+// Smart fetch: try lightweight first, fall back to full browser
+async function fetchHtml(
+  url: string,
+  browserInstance: Browser | null = null,
+): Promise<string> {
+  const lightweight = await fetchHtmlLightweight(url);
+  if (lightweight) return lightweight;
 
-  const context = await getBrowserContext();
-  const page = await context.newPage();
+  // Need a real browser
+  if (browserInstance) {
+    return fetchHtmlWithBrowser(browserInstance, url);
+  }
+
+  // No browser provided — spin one up just for this call
+  return withBrowser((browser) => fetchHtmlWithBrowser(browser, url));
+}
+
+// --- M3U8 capture ---
+// Listen on `request` (not response) — faster since we don't wait for body
+async function captureM3U8(browser: Browser, embedUrl: string): Promise<string | null> {
+  const page = await browser.newPage();
   let streamUrl: string | null = null;
 
   try {
-    const streamPromise = new Promise<string | null>((resolve) => {
-      page.on('request', (req) => {
-        const u = req.url();
-        if (u.includes('.m3u8')) {
-          resolve(u);
-        }
-      });
-      // Fallback timeout just in case it doesn't load
-      setTimeout(() => resolve(null), 12000);
+    // Only load what's needed for the player to initialize
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'stylesheet', 'font'].includes(type)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
     });
 
-    await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    const captured = await streamPromise;
-    if (captured) streamUrl = captured;
+    const streamPromise = new Promise<string | null>((resolve) => {
+      // request is faster than response — we get the URL before body downloads
+      page.on('request', (req) => {
+        if (req.url().includes('.m3u8')) resolve(req.url());
+      });
+      setTimeout(() => resolve(null), 10000);
+    });
+
+    await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 18000 });
+    streamUrl = await streamPromise;
   } catch (err) {
-    console.error('Playwright M3U8 Capture Error:', err);
+    console.error('M3U8 capture error:', err);
   } finally {
     await page.close();
   }
@@ -145,36 +176,30 @@ async function captureM3U8Playwright(embedUrl: string | null): Promise<string | 
   return streamUrl;
 }
 
-// ------ UTILS ------
-function normalizeToAbsoluteUrl(url: string | undefined): string | null {
+// --- Utils ---
+function normalizeUrl(url: string | undefined): string | null {
   if (!url) return null;
   try { return new URL(url, BASE_URL).toString(); } catch { return null; }
 }
 
-function extractSlugFromUrl(url: string | null): string | null {
+function extractSlug(url: string | null): string | null {
   if (!url) return null;
   try {
-    const parsed = new URL(url);
-    const parts = parsed.pathname.split('/').filter(Boolean);
+    const parts = new URL(url).pathname.split('/').filter(Boolean);
     return parts.length ? parts[parts.length - 1] : null;
   } catch { return null; }
 }
 
-function extractSeasonNumberFromSlug(slug: string | null): number | null {
-  if (!slug) {
-    return null;
-  }
-
+function extractSeasonNumber(slug: string | null): number | null {
+  if (!slug) return null;
   const match = slug.match(/-(\d+)$/);
-  if (!match) {
-    return null;
-  }
-
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : null;
 }
 
-// ------ API METHODS ------
+// --- Public API ---
+
 export async function searchTuniflix(query: string): Promise<TuniflixSearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -183,185 +208,139 @@ export async function searchTuniflix(query: string): Promise<TuniflixSearchResul
   const cached = getCached<TuniflixSearchResult[]>(cacheKey);
   if (cached) return cached;
 
-  const url = `${BASE_URL}/?s=${encodeURIComponent(trimmed)}`;
-  const html = await fetchHtmlWithPlaywright(url);
+  // Search pages are usually static — try lightweight fetch first
+  const html = await fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(trimmed)}`);
   const $ = cheerio.load(html);
   const results: TuniflixSearchResult[] = [];
 
-  $('article').each((_, element) => {
-    const title = $(element).find('h2').first().text().trim();
-    const rawLink = $(element).find('a').first().attr('href');
-    const rawImage = $(element).find('img').first().attr('src') ?? $(element).find('img').first().attr('data-src');
-
-    const link = normalizeToAbsoluteUrl(rawLink);
-    const slug = extractSlugFromUrl(link);
-
+  $('article').each((_, el) => {
+    const title = $(el).find('h2').first().text().trim();
+    const link = normalizeUrl($(el).find('a').first().attr('href'));
+    const slug = extractSlug(link);
     if (!title || !link || !slug) return;
 
-    const type: 'movie' | 'series' = link.includes('/serie/') ? 'series' : 'movie';
-    results.push({ title, slug, type, image: normalizeToAbsoluteUrl(rawImage), link });
-  });
+    const rawImage = $(el).find('img').first().attr('src')
+      ?? $(el).find('img').first().attr('data-src');
 
-  return setCached(cacheKey, results);
-}
-
-export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
-  const safeSlug = slug.trim();
-  const cacheKey = `series:${safeSlug.toLowerCase()}`;
-  const cached = getCached<TuniflixSeason[]>(cacheKey);
-  if (cached) return cached;
-
-  const url = `${BASE_URL}/serie/${encodeURIComponent(safeSlug)}`;
-  const html = await fetchHtmlWithPlaywright(url);
-  const $ = cheerio.load(html);
-  const seasons: TuniflixSeason[] = [];
-
-  const seasonCandidates: Array<{ name: string; link: string; number: number | null }> = [];
-  const seenSeasons = new Set<string>();
-
-  $('a[href*="/season/"]').each((_, anchor) => {
-    const rawLink = $(anchor).attr('href');
-    const link = normalizeToAbsoluteUrl(rawLink);
-    const seasonSlug = extractSlugFromUrl(link);
-
-    if (!link || !seasonSlug || seenSeasons.has(seasonSlug)) {
-      return;
-    }
-
-    seenSeasons.add(seasonSlug);
-
-    const seasonNumber = extractSeasonNumberFromSlug(seasonSlug);
-    const seasonName =
-      $(anchor).text().trim() ||
-      (seasonNumber ? `Season ${seasonNumber}` : 'Season');
-
-    seasonCandidates.push({
-      name: seasonName,
+    results.push({
+      title, slug,
+      type: link.includes('/serie/') ? 'series' : 'movie',
+      image: normalizeUrl(rawImage),
       link,
-      number: seasonNumber,
     });
   });
 
-  seasonCandidates.sort((a, b) => {
-    if (a.number === null && b.number === null) return 0;
-    if (a.number === null) return 1;
-    if (b.number === null) return -1;
-    return a.number - b.number;
-  });
+  return setCached(cacheKey, results, TTL.search);
+}
 
-  for (const season of seasonCandidates) {
-    const seasonHtml = await fetchHtmlWithPlaywright(season.link);
-    const $$ = cheerio.load(seasonHtml);
-    const episodes: TuniflixEpisodeItem[] = [];
-    const seenEpisodes = new Set<string>();
+export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
+  const cacheKey = `series:${slug.toLowerCase()}`;
+  const cached = getCached<TuniflixSeason[]>(cacheKey);
+  if (cached) return cached;
 
-    $$('a[href*="/episode/"], a[href*="/episodio/"], a[href*="/episodes/"]').each(
-      (_, anchor) => {
-        const rawLink = $$(anchor).attr('href');
-        const link = normalizeToAbsoluteUrl(rawLink);
-        const episodeSlug = extractSlugFromUrl(link);
+  // Series pages often need JS — pass browser through to avoid re-launching per season
+  return withBrowser(async (browser) => {
+    const html = await fetchHtml(`${BASE_URL}/serie/${encodeURIComponent(slug)}`, browser);
+    const $ = cheerio.load(html);
 
-        if (!link || !episodeSlug || seenEpisodes.has(episodeSlug)) {
-          return;
-        }
+    const seenSeasons = new Set<string>();
+    const seasonCandidates: Array<{ name: string; link: string; number: number | null }> = [];
 
-        seenEpisodes.add(episodeSlug);
+    $('a[href*="/season/"]').each((_, anchor) => {
+      const link = normalizeUrl($(anchor).attr('href'));
+      const seasonSlug = extractSlug(link);
+      if (!link || !seasonSlug || seenSeasons.has(seasonSlug)) return;
+      seenSeasons.add(seasonSlug);
 
-        const fallbackEpisodeNumber = episodes.length + 1;
-        const title =
-          $$(anchor).text().trim() ||
-          (season.number
-            ? `Episode ${season.number}x${fallbackEpisodeNumber}`
-            : `Episode ${fallbackEpisodeNumber}`);
+      const number = extractSeasonNumber(seasonSlug);
+      seasonCandidates.push({
+        name: $(anchor).text().trim() || (number ? `Season ${number}` : 'Season'),
+        link,
+        number,
+      });
+    });
 
-        episodes.push({
-          title,
-          slug: episodeSlug,
-          link,
+    seasonCandidates.sort((a, b) => {
+      if (a.number === null) return 1;
+      if (b.number === null) return -1;
+      return a.number - b.number;
+    });
+
+    // Fetch all seasons IN PARALLEL — reusing the same browser instance
+    const seasonResults = await Promise.all(
+      seasonCandidates.map(async (season) => {
+        const seasonHtml = await fetchHtml(season.link, browser);
+        const $$ = cheerio.load(seasonHtml);
+        const episodes: TuniflixEpisodeItem[] = [];
+        const seenEpisodes = new Set<string>();
+
+        $$('a[href*="/episode/"], a[href*="/episodio/"], a[href*="/episodes/"]').each((_, anchor) => {
+          const link = normalizeUrl($$(anchor).attr('href'));
+          const episodeSlug = extractSlug(link);
+          if (!link || !episodeSlug || seenEpisodes.has(episodeSlug)) return;
+          seenEpisodes.add(episodeSlug);
+
+          const n = episodes.length + 1;
+          episodes.push({
+            title: $$(anchor).text().trim() || (season.number ? `Episode ${season.number}x${n}` : `Episode ${n}`),
+            slug: episodeSlug,
+            link,
+          });
         });
-      }
+
+        return episodes.length > 0 ? { season: season.name, episodes } : null;
+      })
     );
 
-    if (episodes.length > 0) {
-      seasons.push({
-        season: season.name,
-        episodes,
-      });
-    }
-  }
+    let seasons: TuniflixSeason[] = seasonResults.filter(Boolean) as TuniflixSeason[];
 
-  // Fallback for layouts that directly expose episode links on /serie page.
-  if (seasons.length === 0) {
-    const fallbackEpisodes: TuniflixEpisodeItem[] = [];
-    const seen = new Set<string>();
-
-    $('a[href*="/episode/"], a[href*="/episodio/"], a[href*="/episodes/"]').each(
-      (_, anchor) => {
-        const rawLink = $(anchor).attr('href');
-        const link = normalizeToAbsoluteUrl(rawLink);
-        const episodeSlug = extractSlugFromUrl(link);
-
-        if (!link || !episodeSlug || seen.has(episodeSlug)) {
-          return;
-        }
-
+    // Fallback: episodes listed directly on /serie page
+    if (seasons.length === 0) {
+      const fallback: TuniflixEpisodeItem[] = [];
+      const seen = new Set<string>();
+      $('a[href*="/episode/"], a[href*="/episodio/"], a[href*="/episodes/"]').each((_, anchor) => {
+        const link = normalizeUrl($(anchor).attr('href'));
+        const episodeSlug = extractSlug(link);
+        if (!link || !episodeSlug || seen.has(episodeSlug)) return;
         seen.add(episodeSlug);
-        const title = $(anchor).text().trim() || `Episode ${fallbackEpisodes.length + 1}`;
-
-        fallbackEpisodes.push({
-          title,
+        fallback.push({
+          title: $(anchor).text().trim() || `Episode ${fallback.length + 1}`,
           slug: episodeSlug,
           link,
         });
-      }
-    );
-
-    if (fallbackEpisodes.length > 0) {
-      seasons.push({
-        season: 'Season 1',
-        episodes: fallbackEpisodes,
       });
+      if (fallback.length > 0) seasons = [{ season: 'Season 1', episodes: fallback }];
     }
-  }
 
-  if (seasons.length === 0) {
-    return seasons;
-  }
-
-  return setCached(cacheKey, seasons);
+    return setCached(cacheKey, seasons, TTL.series);
+  });
 }
 
 export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
-  const safeSlug = slug.trim();
-  const cacheKey = `episode:${safeSlug.toLowerCase()}`;
+  const cacheKey = `episode:${slug.toLowerCase()}`;
   const cached = getCached<TuniflixEpisodeSource>(cacheKey);
   if (cached) return cached;
 
-  const url = `${BASE_URL}/episode/${encodeURIComponent(safeSlug)}`;
-  const html = await fetchHtmlWithPlaywright(url);
-  const $ = cheerio.load(html);
-
-  const iframeSrc = $('iframe').first().attr('src');
-  const embed = normalizeToAbsoluteUrl(iframeSrc);
-  const stream = await captureM3U8Playwright(embed);
-
-  return setCached(cacheKey, { embed, stream });
+  return withBrowser(async (browser) => {
+    // Episode page itself may be lightweight; embed definitely needs browser
+    const html = await fetchHtml(`${BASE_URL}/episode/${encodeURIComponent(slug)}`, browser);
+    const embed = normalizeUrl(cheerio.load(html)('iframe').first().attr('src'));
+    const stream = embed ? await captureM3U8(browser, embed) : null;
+    return setCached(cacheKey, { embed, stream }, TTL.episode);
+  });
 }
 
 export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
-  const safeSlug = slug.trim();
-  const cacheKey = `movie:${safeSlug.toLowerCase()}`;
+  const cacheKey = `movie:${slug.toLowerCase()}`;
   const cached = getCached<TuniflixMovieSource>(cacheKey);
   if (cached) return cached;
 
-  const url = `${BASE_URL}/movie/${encodeURIComponent(safeSlug)}`;
-  const html = await fetchHtmlWithPlaywright(url);
-  const $ = cheerio.load(html);
-
-  const title = $('h1').first().text().trim();
-  const iframeSrc = $('iframe').first().attr('src');
-  const embed = normalizeToAbsoluteUrl(iframeSrc);
-  const stream = await captureM3U8Playwright(embed);
-
-  return setCached(cacheKey, { title, embed, stream });
+  return withBrowser(async (browser) => {
+    const html = await fetchHtml(`${BASE_URL}/movie/${encodeURIComponent(slug)}`, browser);
+    const $ = cheerio.load(html);
+    const title = $('h1').first().text().trim();
+    const embed = normalizeUrl($('iframe').first().attr('src'));
+    const stream = embed ? await captureM3U8(browser, embed) : null;
+    return setCached(cacheKey, { title, embed, stream }, TTL.movie);
+  });
 }
