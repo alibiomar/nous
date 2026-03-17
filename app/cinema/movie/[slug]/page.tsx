@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
+import { useStreamCapture } from '@/hooks/use-stream-capture';
+import { createClient } from '@/lib/client';
 
 type MoviePayload = {
   title: string;
@@ -10,14 +12,30 @@ type MoviePayload = {
   stream: string | null;
 };
 
+type RoomStatePayload = {
+  slug?: string;
+  series?: string;
+  episode?: string;
+};
+
 export default function CinemaMoviePage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
+  const router = useRouter();
+  const search = useSearchParams();
+  const roomParam = search?.get('room') ?? 'cinema:shared';
+  const supabase = createClient();
 
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Client-side stream capture — token is bound to user's IP, not server's
+  const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
+    movie?.embed ?? null
+  );
+
+  // --- Load movie ---
   useEffect(() => {
     if (!slug) {
       setError('Missing movie slug');
@@ -25,43 +43,86 @@ export default function CinemaMoviePage() {
       return;
     }
 
-    const loadMovie = async () => {
+    const load = async () => {
       setIsLoading(true);
       setError('');
-
       try {
-        const response = await fetch(
-          `/api/tuniflix/movie/${encodeURIComponent(slug)}`,
-          { credentials: 'omit' }
-        );
-        const contentType = response.headers.get('content-type') ?? '';
-
+        const res = await fetch(`/api/tuniflix/movie/${encodeURIComponent(slug)}`, {
+          credentials: 'omit',
+        });
+        const contentType = res.headers.get('content-type') ?? '';
         if (!contentType.includes('application/json')) {
-          setMovie(null);
           setError('Movie endpoint returned a non-JSON response');
           return;
         }
-
-        const data = (await response.json()) as MoviePayload | { error?: string };
-
-        if (!response.ok) {
-          setMovie(null);
+        const data = (await res.json()) as MoviePayload | { error?: string };
+        if (!res.ok) {
           setError((data as { error?: string }).error ?? 'Failed to load movie');
           return;
         }
-
         setMovie(data as MoviePayload);
-      } catch (loadError) {
-        console.error(loadError);
-        setMovie(null);
+      } catch {
         setError('Failed to load movie');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadMovie();
+    void load();
   }, [slug]);
+
+  // --- Broadcast selection ---
+  useEffect(() => {
+    if (!movie || !slug) return;
+    void fetch('/api/cinema-room-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: roomParam,
+        room_type: 'movie',
+        payload: { slug, title: movie.title ?? null, embed: movie.embed ?? null },
+      }),
+    }).catch(() => undefined);
+  }, [movie, slug, roomParam]);
+
+  // --- Subscribe to room state ---
+  useEffect(() => {
+    if (!roomParam) return;
+
+    const fetchState = async () => {
+      try {
+        const res = await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`);
+        if (!res.ok) return;
+        const data = await res.json() as { payload?: RoomStatePayload } | null;
+        const payload = data?.payload;
+        if (!payload) return;
+
+        if (payload.slug && payload.slug !== slug) {
+          router.push(`/cinema/movie/${payload.slug}`);
+          return;
+        }
+        if (payload.series) {
+          const dest = payload.episode
+            ? `/cinema/series/${payload.series}?episode=${payload.episode}`
+            : `/cinema/series/${payload.series}`;
+          router.push(dest);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void fetchState();
+
+    const channel = supabase
+      .channel('cinema-room-state')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cinema_room_state' }, () => {
+        void fetchState();
+      })
+      .subscribe();
+
+    return () => void supabase.removeChannel(channel);
+  }, [roomParam, slug, router, supabase]);
 
   if (isLoading) {
     return (
@@ -87,6 +148,58 @@ export default function CinemaMoviePage() {
     );
   }
 
+  const renderPlayer = () => {
+    // Stream successfully captured client-side
+    if (streamUrl) {
+      return (
+        <TuniflixHlsPlayer
+          stream={streamUrl}
+          embedReferer={movie.embed ?? undefined}
+          syncId={`cinema:movie:${slug}`}
+          className="h-[56vw] max-h-[70vh] min-h-75 w-full"
+        />
+      );
+    }
+
+    // Still trying to capture stream
+    if (capturing) {
+      return (
+        <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+            <p className="text-sm text-white/60">Connecting to stream...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Capture failed — fall back to iframe embed
+    if (captureError && movie.embed) {
+      return (
+        <iframe
+          src={movie.embed}
+          className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
+          allowFullScreen
+          title={movie.title || 'Movie player'}
+        />
+      );
+    }
+
+    if (!movie.embed) {
+      return <p className="text-sm text-muted-foreground">No playable source found.</p>;
+    }
+
+    // embed exists, capture still in progress — show iframe as immediate fallback
+    return (
+      <iframe
+        src={movie.embed}
+        className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
+        allowFullScreen
+        title={movie.title || 'Movie player'}
+      />
+    );
+  };
+
   return (
     <div className="space-y-5">
       <section className="glass-panel rounded-3xl p-5 md:p-7">
@@ -95,28 +208,12 @@ export default function CinemaMoviePage() {
           {movie.title || slug}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Playback sync is enabled for direct HLS streams.
+          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
         </p>
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
-        {movie.stream ? (
-          <TuniflixHlsPlayer
-            stream={movie.stream}
-            embedReferer={movie.embed ?? undefined}
-            syncId={`cinema:movie:${slug}`}
-            className="h-[56vw] max-h-[70vh] min-h-75 w-full"
-          />
-        ) : movie.embed ? (
-          <iframe
-            src={movie.embed}
-            className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
-            allowFullScreen
-            title={movie.title || 'Movie player'}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">No playable source found for this movie.</p>
-        )}
+        {renderPlayer()}
       </section>
     </div>
   );

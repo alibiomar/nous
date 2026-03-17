@@ -295,6 +295,7 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
   });
 }
 
+// In tuniflix.ts — simplify getEpisode and getMovie
 export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   const cacheKey = `episode:${slug.toLowerCase()}`;
   const cached = getCached<TuniflixEpisodeSource>(cacheKey);
@@ -303,8 +304,8 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/episode/${encodeURIComponent(slug)}`, browser);
     const embed = normalizeUrl(cheerio.load(html)('iframe').first().attr('src'));
-    const stream = embed ? await captureM3U8(browser, embed) : null;
-    return setCached(cacheKey, { embed, stream }, TTL.episode);
+    // No more captureM3U8 — stream is captured client-side
+    return setCached(cacheKey, { embed, stream: null }, TTL.episode);
   });
 }
 
@@ -318,7 +319,6 @@ export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
     const $ = cheerio.load(html);
     const title = $('h1').first().text().trim();
     const embed = normalizeUrl($('iframe').first().attr('src'));
-    const stream = embed ? await captureM3U8(browser, embed) : null;
-    return setCached(cacheKey, { title, embed, stream }, TTL.movie);
+    return setCached(cacheKey, { title, embed, stream: null }, TTL.movie);
   });
 }

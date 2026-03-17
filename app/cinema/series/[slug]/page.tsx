@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import {
   Accordion,
@@ -10,6 +11,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
+import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { Layers, PlayCircle, Tv } from 'lucide-react';
 
 type Episode = {
@@ -28,9 +30,19 @@ type EpisodeSource = {
   stream: string | null;
 };
 
+type RoomStatePayload = {
+  series?: string;
+  episode?: string;
+  slug?: string;
+};
+
 export default function CinemaSeriesPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
+  const router = useRouter();
+  const search = useSearchParams();
+  const roomParam = search?.get('room') ?? 'cinema:shared';
+  const supabase = createClient();
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
@@ -40,6 +52,12 @@ export default function CinemaSeriesPage() {
   const [isLoadingEpisode, setIsLoadingEpisode] = useState(false);
   const [error, setError] = useState('');
 
+  // Client-side stream capture from the episode's embed URL
+  const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
+    episodeSource?.embed ?? null
+  );
+
+  // --- Load series ---
   useEffect(() => {
     if (!slug) {
       setError('Missing series slug');
@@ -47,151 +65,210 @@ export default function CinemaSeriesPage() {
       return;
     }
 
-    const loadSeries = async () => {
+    const load = async () => {
       setError('');
       setIsLoadingSeries(true);
-
       try {
-        const response = await fetch(
-          `/api/tuniflix/series/${encodeURIComponent(slug)}`,
-          { credentials: 'omit' }
-        );
-
-        const contentType = response.headers.get('content-type') ?? '';
+        const res = await fetch(`/api/tuniflix/series/${encodeURIComponent(slug)}`, {
+          credentials: 'omit',
+        });
+        const contentType = res.headers.get('content-type') ?? '';
         if (!contentType.includes('application/json')) {
-          setSeasons([]);
           setError('Series endpoint returned a non-JSON response');
           return;
         }
-
-        const data = (await response.json()) as Season[] | { error?: string };
-        if (!response.ok) {
-          setSeasons([]);
+        const data = (await res.json()) as Season[] | { error?: string };
+        if (!res.ok) {
           setError((data as { error?: string }).error ?? 'Failed to load series');
           return;
         }
+        const loaded = Array.isArray(data) ? data : [];
+        setSeasons(loaded);
 
-        const loadedSeasons = Array.isArray(data) ? data : [];
-        setSeasons(loadedSeasons);
-
-        const firstEpisode = loadedSeasons
-          .flatMap((season) => season.episodes)
-          .find((episode) => Boolean(episode.slug));
-
-        if (firstEpisode) {
-          setSelectedEpisode(firstEpisode);
-
-          const seasonIndex = loadedSeasons.findIndex((season) =>
-            season.episodes.some((episode) => episode.slug === firstEpisode.slug)
-          );
-
-          if (seasonIndex >= 0) {
-            setOpenSeason(`season-${seasonIndex}`);
-          }
+        const first = loaded.flatMap((s) => s.episodes).find((e) => Boolean(e.slug));
+        if (first) {
+          setSelectedEpisode(first);
+          const idx = loaded.findIndex((s) => s.episodes.some((e) => e.slug === first.slug));
+          if (idx >= 0) setOpenSeason(`season-${idx}`);
         }
-      } catch (seriesError) {
-        console.error(seriesError);
-        setSeasons([]);
+      } catch {
         setError('Failed to load series');
       } finally {
         setIsLoadingSeries(false);
       }
     };
 
-    loadSeries();
+    void load();
   }, [slug]);
 
+  // --- Load episode source ---
   useEffect(() => {
     if (!selectedEpisode?.slug) {
       setEpisodeSource(null);
       return;
     }
 
-    const loadEpisodeSource = async () => {
+    const load = async () => {
       setIsLoadingEpisode(true);
       setError('');
-
       try {
-        const response = await fetch(
+        const res = await fetch(
           `/api/tuniflix/episode/${encodeURIComponent(selectedEpisode.slug as string)}`,
           { credentials: 'omit' }
         );
-
-        const contentType = response.headers.get('content-type') ?? '';
+        const contentType = res.headers.get('content-type') ?? '';
         if (!contentType.includes('application/json')) {
-          setEpisodeSource(null);
           setError('Episode endpoint returned a non-JSON response');
           return;
         }
-
-        const data = (await response.json()) as EpisodeSource | { error?: string };
-        if (!response.ok) {
-          setEpisodeSource(null);
+        const data = (await res.json()) as EpisodeSource | { error?: string };
+        if (!res.ok) {
           setError((data as { error?: string }).error ?? 'Failed to load episode');
           return;
         }
-
         setEpisodeSource(data as EpisodeSource);
-      } catch (episodeError) {
-        console.error(episodeError);
-        setEpisodeSource(null);
+      } catch {
         setError('Failed to load episode source');
       } finally {
         setIsLoadingEpisode(false);
       }
     };
 
-    loadEpisodeSource();
+    void load();
   }, [selectedEpisode?.slug]);
 
-  const hasEpisodes = useMemo(
-    () => seasons.some((season) => season.episodes.length > 0),
-    [seasons]
-  );
+  // --- Broadcast selection ---
+  useEffect(() => {
+    if (!selectedEpisode?.slug || !episodeSource) return;
+    void fetch('/api/cinema-room-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: roomParam,
+        room_type: 'series',
+        payload: {
+          series: slug,
+          episode: selectedEpisode.slug,
+          title: selectedEpisode.title,
+          embed: episodeSource.embed ?? null,
+        },
+      }),
+    }).catch(() => undefined);
+  }, [selectedEpisode?.slug, episodeSource, slug, roomParam]);
+
+  // --- Subscribe to room state ---
+  useEffect(() => {
+    if (!roomParam) return;
+
+    const fetchState = async () => {
+      try {
+        const res = await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`);
+        if (!res.ok) return;
+        const data = await res.json() as { payload?: RoomStatePayload } | null;
+        const payload = data?.payload;
+        if (!payload) return;
+
+        if (payload.series && payload.series !== slug) {
+          router.push(`/cinema/series/${payload.series}`);
+          return;
+        }
+        if (payload.episode && payload.episode !== selectedEpisode?.slug) {
+          router.push(`/cinema/series/${slug}?episode=${payload.episode}`);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void fetchState();
+
+    const channel = supabase
+      .channel('cinema-room-state')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cinema_room_state' }, () => {
+        void fetchState();
+      })
+      .subscribe();
+
+    return () => void supabase.removeChannel(channel);
+  }, [roomParam, slug, router, selectedEpisode?.slug, supabase]);
 
   const flattenedEpisodes = useMemo(
-    () => seasons.flatMap((season) => season.episodes).filter((episode) => Boolean(episode.slug)),
+    () => seasons.flatMap((s) => s.episodes).filter((e) => Boolean(e.slug)),
     [seasons]
   );
 
+  const hasEpisodes = flattenedEpisodes.length > 0;
+
+  // Handle ?episode= param
+  useEffect(() => {
+    const episodeParam = search?.get('episode');
+    if (!episodeParam || flattenedEpisodes.length === 0) return;
+    const match = flattenedEpisodes.find((e) => e.slug === episodeParam);
+    if (!match) return;
+    setSelectedEpisode(match);
+    const idx = seasons.findIndex((s) => s.episodes.some((e) => e.slug === episodeParam));
+    if (idx >= 0) setOpenSeason(`season-${idx}`);
+  }, [search, flattenedEpisodes, seasons]);
+
   const selectedEpisodeIndex = useMemo(
-    () => flattenedEpisodes.findIndex((episode) => episode.slug === selectedEpisode?.slug),
+    () => flattenedEpisodes.findIndex((e) => e.slug === selectedEpisode?.slug),
     [flattenedEpisodes, selectedEpisode?.slug]
   );
 
-  const nextEpisode = useMemo(() => {
-    if (selectedEpisodeIndex < 0) {
-      return null;
-    }
-
-    return flattenedEpisodes[selectedEpisodeIndex + 1] ?? null;
-  }, [flattenedEpisodes, selectedEpisodeIndex]);
-
-  const findSeasonKeyForEpisode = (episodeSlug: string | null | undefined) => {
-    if (!episodeSlug) {
-      return null;
-    }
-
-    const seasonIndex = seasons.findIndex((season) =>
-      season.episodes.some((episode) => episode.slug === episodeSlug)
-    );
-
-    if (seasonIndex < 0) {
-      return null;
-    }
-
-    return `season-${seasonIndex}`;
-  };
+  const nextEpisode = flattenedEpisodes[selectedEpisodeIndex + 1] ?? null;
 
   const getSeasonProgress = (season: Season) => {
     const total = season.episodes.length;
-    const selectedIndex = season.episodes.findIndex(
-      (episode) => episode.slug === selectedEpisode?.slug
-    );
-    const current = selectedIndex >= 0 ? selectedIndex + 1 : 0;
-    const ratio = total > 0 ? current / total : 0;
+    const idx = season.episodes.findIndex((e) => e.slug === selectedEpisode?.slug);
+    const current = idx >= 0 ? idx + 1 : 0;
+    return { total, current, ratio: total > 0 ? current / total : 0 };
+  };
 
-    return { total, current, ratio };
+  const renderPlayer = () => {
+    if (isLoadingEpisode) {
+      return (
+        <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
+          <p className="text-sm text-muted-foreground">Loading episode source...</p>
+        </div>
+      );
+    }
+
+    if (streamUrl) {
+      return (
+        <TuniflixHlsPlayer
+          stream={streamUrl}
+          embedReferer={episodeSource?.embed ?? undefined}
+          syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
+          className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+        />
+      );
+    }
+
+    if (capturing) {
+      return (
+        <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-2xl bg-black/40 ring-1 ring-border/60">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+            <p className="text-sm text-white/60">Connecting to stream...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (episodeSource?.embed) {
+      return (
+        <iframe
+          src={episodeSource.embed}
+          className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
+          allowFullScreen
+          title={selectedEpisode?.title || 'Episode player'}
+        />
+      );
+    }
+
+    return (
+      <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
+    );
   };
 
   if (isLoadingSeries) {
@@ -214,35 +291,21 @@ export default function CinemaSeriesPage() {
             <h2 className="mt-2 text-xl font-serif font-semibold text-foreground md:text-2xl">
               {selectedEpisode.title}
             </h2>
+            {nextEpisode && (
+              <button
+                type="button"
+                onClick={() => setSelectedEpisode(nextEpisode)}
+                className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Up next: {nextEpisode.title}
+              </button>
+            )}
           </>
         ) : (
           <p className="text-sm text-muted-foreground">Select an episode to start.</p>
         )}
 
-        <div className="mt-4">
-          {isLoadingEpisode ? (
-            <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
-              <p className="text-sm text-muted-foreground">Loading episode source...</p>
-            </div>
-          ) : episodeSource?.stream ? (
-            <TuniflixHlsPlayer
-              stream={episodeSource.stream}
-              embedReferer={episodeSource.embed ?? undefined}
-              syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
-              className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-            />
-          ) : episodeSource?.embed ? (
-            <iframe
-              src={episodeSource.embed}
-              className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
-              allowFullScreen
-              title={selectedEpisode?.title || 'Episode player'}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
-          )}
-        </div>
-
+        <div className="mt-4">{renderPlayer()}</div>
       </section>
 
       <aside className="order-2 glass-panel rounded-3xl border border-border/70 p-4 md:p-6 xl:order-2">
@@ -253,9 +316,7 @@ export default function CinemaSeriesPage() {
         <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground md:text-3xl break-all">
           {slug}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Pick an episode to watch together.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Pick an episode to watch together.</p>
 
         {error ? <p className="mt-3 text-sm font-medium text-error">{error}</p> : null}
 
@@ -269,7 +330,7 @@ export default function CinemaSeriesPage() {
               type="single"
               collapsible
               value={openSeason}
-              onValueChange={(value) => setOpenSeason(value || 'season-0')}
+              onValueChange={(v) => setOpenSeason(v || 'season-0')}
               className="space-y-3"
             >
               {seasons.map((season, seasonIndex) => {
@@ -305,7 +366,6 @@ export default function CinemaSeriesPage() {
                       <div className="space-y-2">
                         {season.episodes.map((episode, index) => {
                           const isActive = selectedEpisode?.slug === episode.slug;
-
                           return (
                             <Button
                               key={`${episode.slug ?? episode.title}-${index}`}
