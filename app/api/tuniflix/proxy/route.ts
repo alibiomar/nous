@@ -5,12 +5,9 @@ const MAX_SEGMENT_SIZE = 10 * 1024 * 1024;
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
-  // The embed page URL that originally loaded this stream
   const referer = req.nextUrl.searchParams.get('referer');
 
-  if (!url) {
-    return new NextResponse('Missing url param', { status: 400 });
-  }
+  if (!url) return new NextResponse('Missing url param', { status: 400 });
 
   let parsed: URL;
   try {
@@ -23,20 +20,37 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Forbidden file type', { status: 403 });
   }
 
-  // Use provided referer, or fall back to the CDN's own origin
   const effectiveReferer = referer ?? `${parsed.protocol}//${parsed.host}/`;
   const effectiveOrigin = new URL(effectiveReferer).origin;
+
+  // Forward the real client IP so CDN ip-binding checks pass
+  const clientIp =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    req.headers.get('x-real-ip') ??
+    null;
+
+  const upstreamHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Referer': effectiveReferer,
+    'Origin': effectiveOrigin,
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Sec-Fetch-Dest': 'video',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'cross-site',
+  };
+
+  // Forward client IP — some CDNs bind the signed token to the requesting IP
+  if (clientIp) {
+    upstreamHeaders['X-Forwarded-For'] = clientIp;
+    upstreamHeaders['X-Real-IP'] = clientIp;
+  }
 
   let upstream: Response;
   try {
     upstream = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': effectiveReferer,
-        'Origin': effectiveOrigin,
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+      headers: upstreamHeaders,
       redirect: 'follow',
     });
   } catch {
@@ -44,6 +58,9 @@ export async function GET(req: NextRequest) {
   }
 
   if (!upstream.ok) {
+    // Log the actual upstream error details to help debug
+    const body = await upstream.text().catch(() => '');
+    console.error(`Proxy upstream ${upstream.status} for ${url}:`, body.slice(0, 300));
     return new NextResponse(`Upstream error: ${upstream.status}`, { status: upstream.status });
   }
 
@@ -57,7 +74,6 @@ export async function GET(req: NextRequest) {
   if (parsed.pathname.endsWith('.m3u8')) {
     const text = await upstream.text();
     const rewritten = rewriteM3U8(text, url, referer);
-
     return new NextResponse(rewritten, {
       status: 200,
       headers: {
@@ -78,20 +94,16 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// Pass referer through so segment requests also use the correct referer
 function rewriteM3U8(content: string, baseUrl: string, referer: string | null): string {
   const base = new URL(baseUrl);
-
   return content
     .split('\n')
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return line;
-
       try {
         const absolute = new URL(trimmed, base).toString();
         const proxied = `/api/tuniflix/proxy?url=${encodeURIComponent(absolute)}`;
-        // Carry the referer forward into every segment URL
         return referer ? `${proxied}&referer=${encodeURIComponent(referer)}` : proxied;
       } catch {
         return line;
