@@ -227,6 +227,7 @@ export default function CinemaSeriesPage() {
           ) : episodeSource?.stream ? (
             <TuniflixHlsPlayer
               stream={episodeSource.stream}
+              embedReferer={episodeSource.embed ?? undefined}
               syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
               className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
             />

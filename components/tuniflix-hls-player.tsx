@@ -6,10 +6,9 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/client';
 import { proxyStream } from '@/lib/proxy-stream';
 
-// How far apart (seconds) before we force a seek on the remote peer
 const SEEK_THRESHOLD = 2;
-// Suppress re-broadcasting for this long after receiving a remote event
 const SUPPRESS_MS = 200;
+const MAX_RECOVERY = 3;
 
 type PlaybackAction = 'play' | 'pause' | 'seek';
 
@@ -26,20 +25,21 @@ export function TuniflixHlsPlayer({
   className,
   syncId,
   onFatalError,
+  embedReferer,
 }: {
   stream: string;
   className?: string;
   syncId?: string;
   onFatalError?: () => void;
+  embedReferer?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Keep channel in state so the broadcast useEffect can properly depend on it
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   const suppressRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const recoveryAttemptsRef = useRef(0);
 
   const senderIdRef = useRef(
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -66,7 +66,7 @@ export function TuniflixHlsPlayer({
     if (!syncId) return;
 
     const ch = supabase
-      .channel(`cinema-sync-${syncId}`) // scoped channel per syncId, not global
+      .channel(`cinema-sync-${syncId}`)
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
         const payload = message.payload as Partial<PlaybackPayload>;
         const video = videoRef.current;
@@ -80,11 +80,11 @@ export function TuniflixHlsPlayer({
 
         suppress();
 
-        const remoteTime = typeof payload.currentTime === 'number' && Number.isFinite(payload.currentTime)
-          ? Math.max(payload.currentTime, 0)
-          : null;
+        const remoteTime =
+          typeof payload.currentTime === 'number' && Number.isFinite(payload.currentTime)
+            ? Math.max(payload.currentTime, 0)
+            : null;
 
-        // Account for transmission delay on seeks
         const latencyOffset = payload.happenedAt
           ? (Date.now() - payload.happenedAt) / 1000
           : 0;
@@ -110,67 +110,76 @@ export function TuniflixHlsPlayer({
   }, [supabase, syncId, suppress]);
 
   // --- HLS setup ---
-useEffect(() => {
-  const video = videoRef.current;
-  if (!video || !stream) return;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
 
-  setError(null);
-  setBuffering(true);
+    setError(null);
+    setBuffering(true);
+    recoveryAttemptsRef.current = 0; // reset on every new stream
 
-  if (hlsRef.current) {
-    hlsRef.current.destroy();
-    hlsRef.current = null;
-  }
-
-  // Safari native HLS
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = proxyStream(stream);
-    return () => { video.src = ''; };
-  }
-
-  if (!Hls.isSupported()) {
-    setError('HLS playback is not supported in this browser.');
-    setBuffering(false);
-    return;
-  }
-
-  const hls = new Hls({
-    enableWorker: true,
-    lowLatencyMode: false,
-    maxBufferLength: 30,
-  });
-
-  hlsRef.current = hls;
-  hls.attachMedia(video);             // ✅ attach before loadSource
-  hls.loadSource(proxyStream(stream)); // ✅ then load
-
-  hls.on(Hls.Events.MANIFEST_PARSED, () => setBuffering(false));
-
-  hls.on(Hls.Events.ERROR, (_event, data) => {
-    if (data.fatal) {
-      switch (data.type) {
-        case Hls.ErrorTypes.NETWORK_ERROR:
-          hls.startLoad();
-          break;
-        case Hls.ErrorTypes.MEDIA_ERROR:
-          hls.recoverMediaError();
-          break;
-        default:
-          setError('Failed to play stream.');
-          onFatalError?.();
-          hls.destroy();
-          hlsRef.current = null;
-      }
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
     }
-  });
 
-  return () => {
-    hls.destroy();
-    hlsRef.current = null;
-  };
-}, [stream, onFatalError]);
+    // Safari native HLS
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = proxyStream(stream, embedReferer);
+      return () => { video.src = ''; };
+    }
+
+    if (!Hls.isSupported()) {
+      setError('HLS playback is not supported in this browser.');
+      setBuffering(false);
+      return;
+    }
+
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: 30,
+    });
+
+    hlsRef.current = hls;
+    hls.attachMedia(video);
+    hls.loadSource(proxyStream(stream, embedReferer));
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => setBuffering(false));
+
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) {
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            if (recoveryAttemptsRef.current < MAX_RECOVERY) {
+              recoveryAttemptsRef.current += 1;
+              hls.startLoad();
+            } else {
+              setError('Failed to play stream.');
+              onFatalError?.();
+              hls.destroy();
+              hlsRef.current = null;
+            }
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            hls.recoverMediaError();
+            break;
+          default:
+            setError('Failed to play stream.');
+            onFatalError?.();
+            hls.destroy();
+            hlsRef.current = null;
+        }
+      }
+    });
+
+    return () => {
+      hls.destroy();
+      hlsRef.current = null;
+    };
+  }, [stream, embedReferer, onFatalError]);
+
   // --- Broadcast outgoing events ---
-  // Now correctly depends on `channel` (state), not a ref
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !channel || !syncId) return;
@@ -191,13 +200,11 @@ useEffect(() => {
       });
     };
 
-    const onPlay  = () => broadcast('play');
-    const onPause = () => broadcast('pause');
-    const onSeeked = () => broadcast('seek');
-
-    // Buffering state via native video events
-    const onWaiting  = () => setBuffering(true);
-    const onCanPlay  = () => setBuffering(false);
+    const onPlay    = () => broadcast('play');
+    const onPause   = () => broadcast('pause');
+    const onSeeked  = () => broadcast('seek');
+    const onWaiting = () => setBuffering(true);
+    const onCanPlay = () => setBuffering(false);
 
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
@@ -251,7 +258,6 @@ useEffect(() => {
         className="h-full w-full rounded-xl bg-black"
       />
 
-      {/* Buffering spinner */}
       {buffering && !error && (
         <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 pointer-events-none">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />

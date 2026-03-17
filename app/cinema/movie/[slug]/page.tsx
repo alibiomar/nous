@@ -103,6 +103,7 @@ export default function CinemaMoviePage() {
         {movie.stream ? (
           <TuniflixHlsPlayer
             stream={movie.stream}
+            embedReferer={movie.embed ?? undefined}
             syncId={`cinema:movie:${slug}`}
             className="h-[56vw] max-h-[70vh] min-h-75 w-full"
           />
