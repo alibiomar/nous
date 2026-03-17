@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Clapperboard, Sparkles, Tv, Search, ArrowUpRight, Film } from 'lucide-react';
+import { Clapperboard, Tv, Search, Film } from 'lucide-react';
 
 type SearchResult = {
   title: string;
@@ -14,13 +14,64 @@ type SearchResult = {
   link: string;
 };
 
+type RoomStatePayload = {
+  slug?: string;
+  series?: string;
+  episode?: string;
+};
+
+type RoomState = {
+  room_type: 'movie' | 'series' | null;
+  payload: RoomStatePayload | null;
+};
+
+const SHARED_ROOM = 'cinema:shared';
+
 export default function CinemaPage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingRoom, setIsCheckingRoom] = useState(true);
   const [error, setError] = useState('');
 
+  // ── Check for active room session on mount ─────────────────────────────────
+  useEffect(() => {
+    const checkRoom = async () => {
+      try {
+        const res = await fetch(
+          `/api/cinema-room-state?room=${encodeURIComponent(SHARED_ROOM)}`
+        );
+        if (!res.ok) return;
+
+        const data = (await res.json()) as RoomState | null;
+        if (!data?.payload) return;
+
+        const { room_type, payload } = data;
+
+        if (room_type === 'movie' && payload.slug) {
+          router.replace(`/cinema/movie/${payload.slug}`);
+          return;
+        }
+
+        if (room_type === 'series' && payload.series) {
+          const dest = payload.episode
+            ? `/cinema/series/${payload.series}?episode=${payload.episode}`
+            : `/cinema/series/${payload.series}`;
+          router.replace(dest);
+          return;
+        }
+      } catch {
+        // Non-fatal — just show the search page normally
+      } finally {
+        setIsCheckingRoom(false);
+      }
+    };
+
+    void checkRoom();
+  }, [router]);
+
+  // ── Search ─────────────────────────────────────────────────────────────────
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = query.trim();
@@ -70,18 +121,28 @@ export default function CinemaPage() {
       router.push(`/cinema/movie/${result.slug}`);
       return;
     }
-
     router.push(`/cinema/series/${result.slug}`);
   };
 
+  // ── Loading state while checking room ─────────────────────────────────────
+  if (isCheckingRoom) {
+    return (
+      <div className="glass-panel rounded-3xl border border-border/70 p-12 text-center">
+                        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+
+        <p className="text-sm text-muted-foreground">Checking cinema room...</p>
+      </div>
+    );
+  }
+
+  // ── Main UI ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 md:space-y-8">
       <section className="glass-panel relative overflow-hidden rounded-3xl border border-border/70 p-5 md:p-7">
         <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-secondary/60 blur-2xl" />
 
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared cinema room</p>
-
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared cinema room</p>
         <h1 className="mt-2 text-3xl font-serif font-semibold text-foreground md:text-5xl">
           Cinema
         </h1>
@@ -135,7 +196,7 @@ export default function CinemaPage() {
             key={`${result.type}-${result.slug}`}
             onClick={() => handleOpen(result)}
             className="cursor-pointer glass-panel group overflow-hidden rounded-3xl border border-border/70 p-0 transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
-          > 
+          >
             <div className="relative">
               {result.image ? (
                 <img
@@ -149,22 +210,18 @@ export default function CinemaPage() {
                   <Film className="h-10 w-10 text-primary/70" />
                 </div>
               )}
-
               <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/55 via-black/15 to-transparent" />
-              <div className="absolute left-3 right-3 top-3 flex items-center justify-between">
+              <div className="absolute left-3 right-3 top-3">
                 <span className="rounded-full border border-white/30 bg-black/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-sm">
                   {result.type}
                 </span>
               </div>
-
               <div className="absolute bottom-3 left-3 right-3">
                 <h2 className="line-clamp-2 text-xl font-semibold leading-tight text-white drop-shadow-sm">
                   {result.title}
                 </h2>
               </div>
             </div>
-
-
           </article>
         ))}
       </section>

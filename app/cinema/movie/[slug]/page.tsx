@@ -5,6 +5,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { createClient } from '@/lib/client';
+import { useCinemaSync } from '@/hooks/use-cinema-sync';
+import { Button } from '@/components/ui/button';
 
 type MoviePayload = {
   title: string;
@@ -25,10 +27,14 @@ export default function CinemaMoviePage() {
   const search = useSearchParams();
   const roomParam = search?.get('room') ?? 'cinema:shared';
   const supabase = createClient();
+  const syncId = slug ? `cinema:movie:${slug}` : null;
 
+const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syncId);
+    
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
 
   // Client-side stream capture — token is bound to user's IP, not server's
   const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
@@ -127,6 +133,8 @@ export default function CinemaMoviePage() {
   if (isLoading) {
     return (
       <div className="glass-panel rounded-3xl p-8">
+                        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+
         <p className="text-muted-foreground">Loading movie...</p>
       </div>
     );
@@ -156,6 +164,8 @@ export default function CinemaMoviePage() {
           stream={streamUrl}
           embedReferer={movie.embed ?? undefined}
           syncId={`cinema:movie:${slug}`}
+            externalSyncEvent={externalSyncEvent}          // ← NEW
+  onPlaybackChange={handlePlaybackChange}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full"
         />
       );
@@ -167,6 +177,8 @@ export default function CinemaMoviePage() {
         <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
           <div className="flex flex-col items-center gap-3">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+                            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+
             <p className="text-sm text-white/60">Connecting to stream...</p>
           </div>
         </div>
@@ -204,12 +216,34 @@ export default function CinemaMoviePage() {
     <div className="space-y-5">
       <section className="glass-panel rounded-3xl p-5 md:p-7">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Now playing</p>
-        <h1 className="mt-2 text-3xl font-serif font-semibold text-foreground md:text-4xl">
-          {movie.title || slug}
-        </h1>
+
         <p className="mt-2 text-sm text-muted-foreground">
           {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
         </p>
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-8 px-3 text-sm"
+            onClick={async () => {
+              if (isClearing) return;
+              setIsClearing(true);
+              try {
+                await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
+                  method: 'DELETE',
+                  credentials: 'include',
+                });
+                router.push('/cinema');
+              } catch (e) {
+                // ignore
+              } finally {
+                setIsClearing(false);
+              }
+            }}
+          >
+            {isClearing ? 'Clearing…' : 'Watch something new'}
+          </Button>
+        </div>
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">

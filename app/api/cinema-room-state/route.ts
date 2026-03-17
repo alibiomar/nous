@@ -140,3 +140,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to set room state' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: 'Supabase credentials are missing' }, { status: 500 });
+    }
+
+    const { supabase, authError } = await createRoomClient();
+    if (authError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // allow room in query or body
+    const urlRoom = request.nextUrl.searchParams.get('room') ?? undefined;
+    let room = urlRoom;
+    if (!room) {
+      try {
+        const body = await request.json();
+        room = body?.room;
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+
+    if (!room) {
+      return NextResponse.json({ error: 'Room is required' }, { status: 400 });
+    }
+
+    const { error } = await supabase.from('cinema_room_state').delete().eq('room', room);
+    if (error) throw error;
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Clear cinema room state error:', error);
+    return NextResponse.json({ error: 'Failed to clear room state' }, { status: 500 });
+  }
+}

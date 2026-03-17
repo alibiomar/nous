@@ -11,7 +11,7 @@ const MAX_RECOVERY = 3;
 
 type PlaybackAction = 'play' | 'pause' | 'seek';
 
-interface PlaybackPayload {
+export interface HlsPlaybackPayload {
   syncId: string;
   senderId: string;
   action: PlaybackAction;
@@ -23,22 +23,29 @@ export function TuniflixHlsPlayer({
   stream,
   className,
   syncId,
+  // NEW: accept an external sync event from the parent (same pattern as YouTubeSyncPlayer)
+  externalSyncEvent,
+  // NEW: tell the parent about local play/pause/seek so it can broadcast and update UI
+  onPlaybackChange,
   onFatalError,
   embedReferer,
 }: {
   stream: string;
   className?: string;
   syncId?: string;
+  externalSyncEvent?: HlsPlaybackPayload | null;
+  onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
   onFatalError?: () => void;
   embedReferer?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   const suppressRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const recoveryAttemptsRef = useRef(0);
+  // Track whether we're applying a remote sync so we don't re-broadcast it
+  const applyingRemoteSyncRef = useRef(false);
 
   const senderIdRef = useRef(
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -49,9 +56,6 @@ export function TuniflixHlsPlayer({
   const [error, setError] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(false);
 
-  const supabase = createClient();
-
-  // --- Suppress helper ---
   const suppress = useCallback(() => {
     if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
     suppressRef.current = true;
@@ -60,55 +64,40 @@ export function TuniflixHlsPlayer({
     }, SUPPRESS_MS);
   }, []);
 
-  // --- Supabase sync channel ---
+  // ── Apply external sync events from the parent ────────────────────────────
+  // This mirrors how YouTubeSyncPlayer receives syncEvent as a prop
   useEffect(() => {
-    if (!syncId) return;
+    const video = videoRef.current;
+    if (!externalSyncEvent || !video) return;
+    // Ignore our own events (parent re-routes our broadcasts back down)
+    if (externalSyncEvent.senderId === senderIdRef.current) return;
 
-    const ch = supabase
-      .channel(`cinema-sync-${syncId}`)
-      .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
-        const payload = message.payload as Partial<PlaybackPayload>;
-        const video = videoRef.current;
+    suppress();
+    applyingRemoteSyncRef.current = true;
 
-        if (
-          !video ||
-          !payload ||
-          payload.syncId !== syncId ||
-          payload.senderId === senderIdRef.current
-        ) return;
+    const remoteTime = Number.isFinite(externalSyncEvent.currentTime)
+      ? Math.max(externalSyncEvent.currentTime, 0)
+      : null;
 
-        suppress();
+    const latencyOffset = externalSyncEvent.happenedAt
+      ? (Date.now() - externalSyncEvent.happenedAt) / 1000
+      : 0;
 
-        const remoteTime =
-          typeof payload.currentTime === 'number' && Number.isFinite(payload.currentTime)
-            ? Math.max(payload.currentTime, 0)
-            : null;
+    if (remoteTime !== null && Math.abs(video.currentTime - remoteTime) > SEEK_THRESHOLD) {
+      video.currentTime = remoteTime + (externalSyncEvent.action === 'play' ? latencyOffset : 0);
+    }
 
-        const latencyOffset = payload.happenedAt
-          ? (Date.now() - payload.happenedAt) / 1000
-          : 0;
+    if (externalSyncEvent.action === 'play') {
+      void video.play().catch(() => undefined);
+    } else if (externalSyncEvent.action === 'pause') {
+      video.pause();
+    }
 
-        if (remoteTime !== null && Math.abs(video.currentTime - remoteTime) > SEEK_THRESHOLD) {
-          video.currentTime = remoteTime + (payload.action === 'play' ? latencyOffset : 0);
-        }
+    const t = setTimeout(() => { applyingRemoteSyncRef.current = false; }, 250);
+    return () => clearTimeout(t);
+  }, [externalSyncEvent, suppress]);
 
-        if (payload.action === 'play') {
-          void video.play().catch(() => undefined);
-        } else if (payload.action === 'pause') {
-          video.pause();
-        }
-      })
-      .subscribe();
-
-    setChannel(ch);
-
-    return () => {
-      setChannel(null);
-      void supabase.removeChannel(ch);
-    };
-  }, [supabase, syncId, suppress]);
-
-  // --- HLS setup ---
+  // ── HLS setup ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !stream) return;
@@ -122,7 +111,6 @@ export function TuniflixHlsPlayer({
       hlsRef.current = null;
     }
 
-    // Safari native HLS — direct, no proxy needed
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = stream;
       return () => { video.src = ''; };
@@ -138,21 +126,15 @@ export function TuniflixHlsPlayer({
       enableWorker: true,
       lowLatencyMode: false,
       maxBufferLength: 30,
-      // Forward the embed origin as referer on every segment request
-      // so the CDN accepts them without a proxy
       xhrSetup: embedReferer
-        ? (xhr) => {
-            xhr.setRequestHeader('Referer', embedReferer);
-          }
+        ? (xhr) => { xhr.setRequestHeader('Referer', embedReferer); }
         : undefined,
     });
 
     hlsRef.current = hls;
     hls.attachMedia(video);
-    hls.loadSource(stream); // direct — token is already bound to user's IP
-
+    hls.loadSource(stream);
     hls.on(Hls.Events.MANIFEST_PARSED, () => setBuffering(false));
-
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) {
         switch (data.type) {
@@ -185,29 +167,20 @@ export function TuniflixHlsPlayer({
     };
   }, [stream, embedReferer, onFatalError]);
 
-  // --- Broadcast outgoing events ---
+  // ── Broadcast outgoing events ─────────────────────────────────────────────
+  // Now calls onPlaybackChange so the parent owns the channel + state
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !channel || !syncId) return;
+    if (!video) return;
 
-    const broadcast = (action: PlaybackAction) => {
-      if (suppressRef.current) return;
-      void channel.send({
-        type: 'broadcast',
-        event: 'playback',
-        payload: {
-          syncId,
-          senderId: senderIdRef.current,
-          action,
-          currentTime: video.currentTime,
-          happenedAt: Date.now(),
-        } satisfies PlaybackPayload,
-      });
+    const notify = (action: PlaybackAction) => {
+      if (suppressRef.current || applyingRemoteSyncRef.current) return;
+      onPlaybackChange?.(action, video.currentTime);
     };
 
-    const onPlay    = () => broadcast('play');
-    const onPause   = () => broadcast('pause');
-    const onSeeked  = () => broadcast('seek');
+    const onPlay    = () => notify('play');
+    const onPause   = () => notify('pause');
+    const onSeeked  = () => notify('seek');
     const onWaiting = () => setBuffering(true);
     const onCanPlay = () => setBuffering(false);
 
@@ -224,54 +197,35 @@ export function TuniflixHlsPlayer({
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('canplay', onCanPlay);
     };
-  }, [channel, syncId]);
+  }, [onPlaybackChange]);
 
-  // --- Volume persistence ---
+  // ── Volume persistence ────────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     const saved = localStorage.getItem('tuniflix-volume');
     if (saved !== null) {
       const parsed = parseFloat(saved);
-      if (Number.isFinite(parsed)) {
-        video.volume = Math.min(1, Math.max(0, parsed));
-      }
+      if (Number.isFinite(parsed)) video.volume = Math.min(1, Math.max(0, parsed));
     }
-
-    const onVolumeChange = () => {
-      localStorage.setItem('tuniflix-volume', String(video.volume));
-    };
-
+    const onVolumeChange = () => localStorage.setItem('tuniflix-volume', String(video.volume));
     video.addEventListener('volumechange', onVolumeChange);
     return () => video.removeEventListener('volumechange', onVolumeChange);
   }, []);
 
-  // --- Cleanup suppress timer on unmount ---
   useEffect(() => {
-    return () => {
-      if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
-    };
+    return () => { if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current); };
   }, []);
 
   return (
     <div className={`relative ${className ?? ''}`}>
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        className="h-full w-full rounded-xl bg-black"
-      />
-
+      <video ref={videoRef} controls playsInline className="h-full w-full rounded-xl bg-black" />
       {buffering && !error && (
         <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 pointer-events-none">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
         </div>
       )}
-
-      {error && (
-        <p className="mt-2 text-sm text-error">{error}</p>
-      )}
+      {error && <p className="mt-2 text-sm text-error">{error}</p>}
     </div>
   );
 }

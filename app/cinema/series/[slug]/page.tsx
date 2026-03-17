@@ -13,6 +13,7 @@ import {
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { Layers, PlayCircle, Tv } from 'lucide-react';
+import { useCinemaSync } from '@/hooks/use-cinema-sync';
 
 type Episode = {
   title: string;
@@ -43,7 +44,7 @@ export default function CinemaSeriesPage() {
   const search = useSearchParams();
   const roomParam = search?.get('room') ?? 'cinema:shared';
   const supabase = createClient();
-
+   
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [episodeSource, setEpisodeSource] = useState<EpisodeSource | null>(null);
@@ -51,7 +52,12 @@ export default function CinemaSeriesPage() {
   const [isLoadingSeries, setIsLoadingSeries] = useState(true);
   const [isLoadingEpisode, setIsLoadingEpisode] = useState(false);
   const [error, setError] = useState('');
-
+  const [isClearing, setIsClearing] = useState(false);
+const syncId = slug && selectedEpisode?.slug
+  ? `cinema:series:${slug}:${selectedEpisode.slug}`
+  : null;
+const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syncId);
+ 
   // Client-side stream capture from the episode's embed URL
   const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
     episodeSource?.embed ?? null
@@ -84,6 +90,30 @@ export default function CinemaSeriesPage() {
         }
         const loaded = Array.isArray(data) ? data : [];
         setSeasons(loaded);
+            <div className="mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-3 text-sm"
+                onClick={async () => {
+                  if (isClearing) return;
+                  setIsClearing(true);
+                  try {
+                    await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
+                      method: 'DELETE',
+                      credentials: 'include',
+                    });
+                    router.push('/cinema');
+                  } catch (e) {
+                    // ignore
+                  } finally {
+                    setIsClearing(false);
+                  }
+                }}
+              >
+                {isClearing ? 'Clearing…' : 'Watch something new'}
+              </Button>
+            </div>
 
         const first = loaded.flatMap((s) => s.episodes).find((e) => Boolean(e.slug));
         if (first) {
@@ -228,6 +258,8 @@ export default function CinemaSeriesPage() {
     if (isLoadingEpisode) {
       return (
         <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
+                            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+
           <p className="text-sm text-muted-foreground">Loading episode source...</p>
         </div>
       );
@@ -239,6 +271,8 @@ export default function CinemaSeriesPage() {
           stream={streamUrl}
           embedReferer={episodeSource?.embed ?? undefined}
           syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
+          externalSyncEvent={externalSyncEvent}          // ← NEW
+  onPlaybackChange={handlePlaybackChange}   
           className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
         />
       );
@@ -274,6 +308,8 @@ export default function CinemaSeriesPage() {
   if (isLoadingSeries) {
     return (
       <div className="glass-panel rounded-3xl border border-border/70 p-8">
+                        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+
         <p className="text-muted-foreground">Loading series...</p>
       </div>
     );
@@ -288,9 +324,7 @@ export default function CinemaSeriesPage() {
               <PlayCircle className="h-3.5 w-3.5" />
               Now playing
             </p>
-            <h2 className="mt-2 text-xl font-serif font-semibold text-foreground md:text-2xl">
-              {selectedEpisode.title}
-            </h2>
+ 
             {nextEpisode && (
               <button
                 type="button"
@@ -350,7 +384,7 @@ export default function CinemaSeriesPage() {
                             <Layers className="h-3.5 w-3.5" />
                             {season.season}
                           </p>
-                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-lg font-medium text-primary">
                             {progress.current}/{progress.total}
                           </span>
                         </div>
