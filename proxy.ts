@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
   const publicRoutes = ['/login', '/'];
 
   // API routes that don't require auth
-  if (pathname.startsWith('/api/auth/')) {
+  if (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/tuniflix')) {
     return NextResponse.next();
   }
 

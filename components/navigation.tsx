@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Heart, MessageCircle, Music, LogOut, Sparkles } from 'lucide-react';
+import { Heart, MessageCircle, Music, LogOut, Clapperboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
@@ -15,7 +15,8 @@ export function Navigation() {
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const { hasUnread } = useUnreadMessages();
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) =>
+    pathname === path || pathname.startsWith(`${path}/`);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -43,6 +44,7 @@ export function Navigation() {
     { href: '/feed', icon: <Heart className="w-5 h-5" />, label: 'Moments' },
     { href: '/messages', icon: <MessageCircle className="w-5 h-5" />, label: 'Messages', hasUnread },
     { href: '/music', icon: <Music className="w-5 h-5" />, label: 'Media' },
+    { href: '/cinema', icon: <Clapperboard className="w-5 h-5" />, label: 'Cinema' },
   ];
 
   return (
@@ -107,7 +109,7 @@ export function Navigation() {
       {/* Mobile Bottom Tab Navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-50 md:hidden">
         <div className="px-3 pb-3">
-          <div className="glass-panel grid grid-cols-4 gap-1 rounded-2xl px-2 py-2">
+          <div className="glass-panel grid grid-cols-5 gap-1 rounded-2xl px-2 py-2">
             {navItems.map((item) => (
               <MobileTabLink
                 key={item.href}
