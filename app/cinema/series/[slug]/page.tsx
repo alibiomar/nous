@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
   Accordion,
@@ -25,7 +24,7 @@ type Season = {
 };
 
 type EpisodeSource = {
-  embed: string  ;
+  embed: string | null;
   stream: string | null;
 };
 
@@ -36,7 +35,6 @@ export default function CinemaSeriesPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [episodeSource, setEpisodeSource] = useState<EpisodeSource | null>(null);
-  const [useEmbedFallback, setUseEmbedFallback] = useState(false);
   const [openSeason, setOpenSeason] = useState<string>('season-0');
   const [isLoadingSeries, setIsLoadingSeries] = useState(true);
   const [isLoadingEpisode, setIsLoadingEpisode] = useState(false);
@@ -108,8 +106,6 @@ export default function CinemaSeriesPage() {
       setEpisodeSource(null);
       return;
     }
-
-    setUseEmbedFallback(false);
 
     const loadEpisodeSource = async () => {
       setIsLoadingEpisode(true);
@@ -227,39 +223,28 @@ export default function CinemaSeriesPage() {
           {isLoadingEpisode ? (
             <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
               <p className="text-sm text-muted-foreground">Loading episode source...</p>
-            </div>):(
-        //   ) : episodeSource?.stream && !useEmbedFallback ? (
-        //     <TuniflixHlsPlayer
-        //       stream={episodeSource.stream}
-        //       syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
-        //       onFatalError={() => setUseEmbedFallback(true)}
-        //       className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-        //     />
-        //   ) : episodeSource?.embed ? (
+            </div>
+          ) : episodeSource?.stream ? (
+            <TuniflixHlsPlayer
+              stream={episodeSource.stream}
+              syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
+              className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+            />
+          ) : episodeSource?.embed ? (
             <iframe
-              src={episodeSource?.embed}
+              src={episodeSource.embed}
               className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
               allowFullScreen
               title={selectedEpisode?.title || 'Episode player'}
             />
-          ) 
-        //   : (
-        //     <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
-        //   )
-          }
+          ) : (
+            <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
+          )}
         </div>
 
       </section>
 
       <aside className="order-2 glass-panel rounded-3xl border border-border/70 p-4 md:p-6 xl:order-2">
-        <div className="mb-3">
-          <Link
-            href="/cinema"
-            className="inline-flex items-center rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
-          >
-            Back to Cinema
-          </Link>
-        </div>
         <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
           <Tv className="h-3.5 w-3.5" />
           Series
