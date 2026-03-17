@@ -8,7 +8,7 @@ import { Film, PlayCircle } from 'lucide-react';
 
 type MoviePayload = {
   title: string;
-  embed: string | null;
+  embed: string ;
   stream: string | null;
 };
 
@@ -117,23 +117,23 @@ export default function CinemaMoviePage() {
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
-        {movie.stream && !useEmbedFallback ? (
+        {/* {movie.stream && !useEmbedFallback ? (
           <TuniflixHlsPlayer
             stream={movie.stream}
             syncId={`cinema:movie:${slug}`}
             onFatalError={() => setUseEmbedFallback(true)}
             className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
           />
-        ) : movie.embed ? (
+        ) : movie.embed ? ( */}
           <iframe
             src={movie.embed}
             className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
             allowFullScreen
             title={movie.title || 'Movie player'}
           />
-        ) : (
+        {/* ) : (
           <p className="text-sm text-muted-foreground">No playable source found for this movie.</p>
-        )}
+        )} */}
       </section>
     </div>
   );

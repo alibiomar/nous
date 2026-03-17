@@ -25,7 +25,7 @@ type Season = {
 };
 
 type EpisodeSource = {
-  embed: string | null;
+  embed: string  ;
   stream: string | null;
 };
 
@@ -227,24 +227,26 @@ export default function CinemaSeriesPage() {
           {isLoadingEpisode ? (
             <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
               <p className="text-sm text-muted-foreground">Loading episode source...</p>
-            </div>
-          ) : episodeSource?.stream && !useEmbedFallback ? (
-            <TuniflixHlsPlayer
-              stream={episodeSource.stream}
-              syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
-              onFatalError={() => setUseEmbedFallback(true)}
-              className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-            />
-          ) : episodeSource?.embed ? (
+            </div>):(
+        //   ) : episodeSource?.stream && !useEmbedFallback ? (
+        //     <TuniflixHlsPlayer
+        //       stream={episodeSource.stream}
+        //       syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
+        //       onFatalError={() => setUseEmbedFallback(true)}
+        //       className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+        //     />
+        //   ) : episodeSource?.embed ? (
             <iframe
-              src={episodeSource.embed}
+              src={episodeSource?.embed}
               className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
               allowFullScreen
               title={selectedEpisode?.title || 'Episode player'}
             />
-          ) : (
-            <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
-          )}
+          ) 
+        //   : (
+        //     <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
+        //   )
+          }
         </div>
 
       </section>
