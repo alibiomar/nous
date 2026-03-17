@@ -4,6 +4,7 @@ import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/client';
+import { proxyStream } from '@/lib/proxy-stream';
 
 // How far apart (seconds) before we force a seek on the remote peer
 const SEEK_THRESHOLD = 2;
@@ -109,73 +110,65 @@ export function TuniflixHlsPlayer({
   }, [supabase, syncId, suppress]);
 
   // --- HLS setup ---
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !stream) return;
+useEffect(() => {
+  const video = videoRef.current;
+  if (!video || !stream) return;
 
-    setError(null);
-    setBuffering(true);
+  setError(null);
+  setBuffering(true);
 
-    // Destroy any existing HLS instance before re-initializing
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
+  if (hlsRef.current) {
+    hlsRef.current.destroy();
+    hlsRef.current = null;
+  }
 
-    // Safari native HLS
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = stream;
-      // Native HLS has no Hls.js events — track buffering via video events
-      return () => {
-        video.src = '';
-      };
-    }
+  // Safari native HLS
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = proxyStream(stream);
+    return () => { video.src = ''; };
+  }
 
-    if (!Hls.isSupported()) {
-      setError('HLS playback is not supported in this browser.');
-      setBuffering(false);
-      return;
-    }
+  if (!Hls.isSupported()) {
+    setError('HLS playback is not supported in this browser.');
+    setBuffering(false);
+    return;
+  }
 
-    const hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false, // true can cause instability on VOD streams
-      maxBufferLength: 30,
-    });
+  const hls = new Hls({
+    enableWorker: true,
+    lowLatencyMode: false,
+    maxBufferLength: 30,
+  });
 
-    hlsRef.current = hls;
-    hls.loadSource(stream);
-    hls.attachMedia(video);
+  hlsRef.current = hls;
+  hls.attachMedia(video);             // ✅ attach before loadSource
+  hls.loadSource(proxyStream(stream)); // ✅ then load
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setBuffering(false);
-    });
+  hls.on(Hls.Events.MANIFEST_PARSED, () => setBuffering(false));
 
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (data.fatal) {
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            // Try to recover network errors automatically
-            hls.startLoad();
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            hls.recoverMediaError();
-            break;
-          default:
-            setError('Failed to play stream.');
-            onFatalError?.();
-            hls.destroy();
-            hlsRef.current = null;
-        }
+  hls.on(Hls.Events.ERROR, (_event, data) => {
+    if (data.fatal) {
+      switch (data.type) {
+        case Hls.ErrorTypes.NETWORK_ERROR:
+          hls.startLoad();
+          break;
+        case Hls.ErrorTypes.MEDIA_ERROR:
+          hls.recoverMediaError();
+          break;
+        default:
+          setError('Failed to play stream.');
+          onFatalError?.();
+          hls.destroy();
+          hlsRef.current = null;
       }
-    });
+    }
+  });
 
-    return () => {
-      hls.destroy();
-      hlsRef.current = null;
-    };
-  }, [stream, onFatalError]);
-
+  return () => {
+    hls.destroy();
+    hlsRef.current = null;
+  };
+}, [stream, onFatalError]);
   // --- Broadcast outgoing events ---
   // Now correctly depends on `channel` (state), not a ref
   useEffect(() => {
