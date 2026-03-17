@@ -132,7 +132,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
 
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-3xl p-8">
+      <div className="glass-panel rounded-3xl p-8 flex">
                         <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
 
         <p className="text-muted-foreground">Loading movie...</p>
@@ -175,8 +175,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
     if (capturing) {
       return (
         <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+          <div className="flex  items-center gap-3">
                             <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
 
             <p className="text-sm text-white/60">Connecting to stream...</p>

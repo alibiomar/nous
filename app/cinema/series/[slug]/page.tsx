@@ -90,30 +90,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
         }
         const loaded = Array.isArray(data) ? data : [];
         setSeasons(loaded);
-            <div className="mt-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 px-3 text-sm"
-                onClick={async () => {
-                  if (isClearing) return;
-                  setIsClearing(true);
-                  try {
-                    await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
-                      method: 'DELETE',
-                      credentials: 'include',
-                    });
-                    router.push('/cinema');
-                  } catch (e) {
-                    // ignore
-                  } finally {
-                    setIsClearing(false);
-                  }
-                }}
-              >
-                {isClearing ? 'Clearing…' : 'Watch something new'}
-              </Button>
-            </div>
+
 
         const first = loaded.flatMap((s) => s.episodes).find((e) => Boolean(e.slug));
         if (first) {
@@ -257,7 +234,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
   const renderPlayer = () => {
     if (isLoadingEpisode) {
       return (
-        <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
+        <div className="rounded-2xl border border-border/70 bg-background/55 p-4 flex">
                             <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
 
           <p className="text-sm text-muted-foreground">Loading episode source...</p>
@@ -307,7 +284,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
 
   if (isLoadingSeries) {
     return (
-      <div className="glass-panel rounded-3xl border border-border/70 p-8">
+      <div className="glass-panel rounded-3xl border border-border/70 p-8 flex">
                         <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
 
         <p className="text-muted-foreground">Loading series...</p>
@@ -324,7 +301,30 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
               <PlayCircle className="h-3.5 w-3.5" />
               Now playing
             </p>
- 
+             <div className="mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-3 text-sm"
+                onClick={async () => {
+                  if (isClearing) return;
+                  setIsClearing(true);
+                  try {
+                    await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
+                      method: 'DELETE',
+                      credentials: 'include',
+                    });
+                    router.push('/cinema');
+                  } catch (e) {
+                    // ignore
+                  } finally {
+                    setIsClearing(false);
+                  }
+                }}
+              >
+                {isClearing ? 'Clearing…' : 'Watch something new'}
+              </Button>
+            </div>
             {nextEpisode && (
               <button
                 type="button"
