@@ -189,28 +189,30 @@ export async function searchTuniflix(query: string): Promise<TuniflixSearchResul
   const cached = getCached<TuniflixSearchResult[]>(cacheKey);
   if (cached) return cached;
 
-  const html = await fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(trimmed)}`);
-  const $ = cheerio.load(html);
-  const results: TuniflixSearchResult[] = [];
+  return withBrowser(async (browser) => {
+    const html = await fetchHtmlWithBrowser(browser, `${BASE_URL}/?s=${encodeURIComponent(trimmed)}`);
+    const $ = cheerio.load(html);
+    const results: TuniflixSearchResult[] = [];
 
-  $('article').each((_, el) => {
-    const title = $(el).find('h2').first().text().trim();
-    const link = normalizeUrl($(el).find('a').first().attr('href'));
-    const slug = extractSlug(link);
-    if (!title || !link || !slug) return;
+    $('article').each((_, el) => {
+      const title = $(el).find('h2').first().text().trim();
+      const link = normalizeUrl($(el).find('a').first().attr('href'));
+      const slug = extractSlug(link);
+      if (!title || !link || !slug) return;
 
-    const rawImage = $(el).find('img').first().attr('src')
-      ?? $(el).find('img').first().attr('data-src');
+      const img = $(el).find('img').first();
+      const rawImage = img.attr('src') ?? img.attr('data-src');
 
-    results.push({
-      title, slug,
-      type: link.includes('/serie/') ? 'series' : 'movie',
-      image: normalizeUrl(rawImage),
-      link,
+      results.push({
+        title, slug,
+        type: link.includes('/serie/') ? 'series' : 'movie',
+        image: normalizeUrl(rawImage),
+        link,
+      });
     });
-  });
 
-  return setCached(cacheKey, results, TTL.search);
+    return setCached(cacheKey, results, TTL.search);
+  });
 }
 
 export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
