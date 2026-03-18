@@ -580,7 +580,7 @@ export default function CinemaSeriesPage() {
                               disabled={!episode.slug || isLoadingEpisode}
                               onClick={() => selectEpisode(episode, seasonKey)}
                             >
-                              {episode.title || `Episode ${index + 1}`}
+                              { `Episode ${index + 1}`}
                               {isWatched && !isActive && (
                                 <span className="ml-auto text-[10px] opacity-60">✓</span>
                               )}
