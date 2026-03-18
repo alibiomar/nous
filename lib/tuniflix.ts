@@ -16,6 +16,7 @@ export interface TuniflixEpisodeItem {
   number: number; // ← FIXED: added missing number field
 }
 export interface TuniflixSeason { season: string; episodes: TuniflixEpisodeItem[]; }
+export interface TuniflixSeriesData { title: string; seasons: TuniflixSeason[]; }
 export interface TuniflixEpisodeSource { embed: string | null; stream: string | null; }
 export interface TuniflixMovieSource { title: string; embed: string | null; stream: string | null; }
 
@@ -204,14 +205,17 @@ export async function searchTuniflix(query: string): Promise<TuniflixSearchResul
   });
 }
 
-export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
+export async function getSeries(slug: string): Promise<TuniflixSeriesData> {
   const cacheKey = `series:${slug.toLowerCase()}`;
-  const cached = getCached<TuniflixSeason[]>(cacheKey);
+  const cached = getCached<TuniflixSeriesData>(cacheKey);
   if (cached) return cached;
 
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/serie/${encodeURIComponent(slug)}`, browser);
     const $ = cheerio.load(html);
+
+    // Scrape the series title from the page h1
+    const seriesTitle = $('h1').first().text().trim() || slug;
 
     const seenSeasons = new Set<string>();
     const seasonCandidates: Array<{ name: string; link: string; number: number | null }> = [];
@@ -283,7 +287,7 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
       if (fallback.length > 0) seasons = [{ season: 'Season 1', episodes: fallback }];
     }
 
-    return setCached(cacheKey, seasons, TTL.series);
+    return setCached(cacheKey, { title: seriesTitle, seasons }, TTL.series);
   });
 }
 

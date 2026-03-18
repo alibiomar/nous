@@ -263,6 +263,9 @@ export default function CinemaMoviePage() {
     <div className="space-y-5">
       <section className="glass-panel rounded-3xl p-5 md:p-7">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Now playing</p>
+        <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl">
+          {movie.title}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
         </p>

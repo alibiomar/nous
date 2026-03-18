@@ -14,7 +14,6 @@ import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
-import { title } from 'process';
 
 type Episode = {
   title: string;
@@ -56,6 +55,7 @@ export default function CinemaSeriesPage() {
   const supabase = createClient();
 
   const [seasons, setSeasons] = useState<Season[]>([]);
+  const [seriesTitle, setSeriesTitle] = useState('');
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [episodeSource, setEpisodeSource] = useState<EpisodeSource | null>(null);
   const [openSeason, setOpenSeason] = useState<string>('season-0');
@@ -114,13 +114,15 @@ export default function CinemaSeriesPage() {
           return;
         }
 
-        const data = (await seriesRes.json()) as Season[] | { error?: string };
+        const data = (await seriesRes.json()) as { title: string; seasons: Season[] } | { error?: string };
         if (!seriesRes.ok) {
           setError((data as { error?: string }).error ?? 'Failed to load series');
           return;
         }
 
-        const loaded = Array.isArray(data) ? data : [];
+        const { title: fetchedTitle, seasons: loadedSeasons } = data as { title: string; seasons: Season[] };
+        const loaded = Array.isArray(loadedSeasons) ? loadedSeasons : [];
+        setSeriesTitle(fetchedTitle || slug || '');
         setSeasons(loaded);
 
         // Build watched set — parse history once and reuse
@@ -513,7 +515,7 @@ export default function CinemaSeriesPage() {
           Series
         </p>
         <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl break-all">
-          {title}
+          {seriesTitle}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">Pick an episode to watch together.</p>
 
@@ -578,7 +580,7 @@ export default function CinemaSeriesPage() {
                               disabled={!episode.slug || isLoadingEpisode}
                               onClick={() => selectEpisode(episode, seasonKey)}
                             >
-                              { `Episode ${index + 1}`}
+                              {episode.title || `Episode ${index + 1}`}
                               {isWatched && !isActive && (
                                 <span className="ml-auto text-[10px] opacity-60">✓</span>
                               )}
