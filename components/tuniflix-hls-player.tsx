@@ -2,8 +2,6 @@
 
 import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { createClient } from '@/lib/client';
 
 const SEEK_THRESHOLD = 2;
 const SUPPRESS_MS = 200;
@@ -23,9 +21,7 @@ export function TuniflixHlsPlayer({
   stream,
   className,
   syncId,
-  // NEW: accept an external sync event from the parent (same pattern as YouTubeSyncPlayer)
   externalSyncEvent,
-  // NEW: tell the parent about local play/pause/seek so it can broadcast and update UI
   onPlaybackChange,
   onFatalError,
   embedReferer,
@@ -39,13 +35,21 @@ export function TuniflixHlsPlayer({
   embedReferer?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
   const suppressRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const recoveryAttemptsRef = useRef(0);
-  // Track whether we're applying a remote sync so we don't re-broadcast it
   const applyingRemoteSyncRef = useRef(false);
+
+  // ── Keep onPlaybackChange in a ref so the listener effect never re-runs ──
+  // This is the core fix: if onPlaybackChange changes reference (e.g. because
+  // syncId changed and useCinemaSync recreated handlePlaybackChange), we must
+  // NOT tear down and re-attach the video listeners — doing so creates a gap
+  // where play/pause events fire but no listener is attached.
+  const onPlaybackChangeRef = useRef(onPlaybackChange);
+  useEffect(() => {
+    onPlaybackChangeRef.current = onPlaybackChange;
+  }, [onPlaybackChange]);
 
   const senderIdRef = useRef(
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -64,12 +68,10 @@ export function TuniflixHlsPlayer({
     }, SUPPRESS_MS);
   }, []);
 
-  // ── Apply external sync events from the parent ────────────────────────────
-  // This mirrors how YouTubeSyncPlayer receives syncEvent as a prop
+  // ── Apply external sync events ────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!externalSyncEvent || !video) return;
-    // Ignore our own events (parent re-routes our broadcasts back down)
     if (externalSyncEvent.senderId === senderIdRef.current) return;
 
     suppress();
@@ -168,19 +170,20 @@ export function TuniflixHlsPlayer({
   }, [stream, embedReferer, onFatalError]);
 
   // ── Broadcast outgoing events ─────────────────────────────────────────────
-  // Now calls onPlaybackChange so the parent owns the channel + state
+  // Empty dep array — listeners are attached once and never torn down.
+  // onPlaybackChange is accessed via ref so we always call the latest version.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const notify = (action: PlaybackAction) => {
       if (suppressRef.current || applyingRemoteSyncRef.current) return;
-      onPlaybackChange?.(action, video.currentTime);
+      onPlaybackChangeRef.current?.(action, video.currentTime);
     };
 
-    const onPlay    = () => notify('play');
-    const onPause   = () => notify('pause');
-    const onSeeked  = () => notify('seek');
+    const onPlay   = () => notify('play');
+    const onPause  = () => notify('pause');
+    const onSeeked = () => notify('seek');
     const onWaiting = () => setBuffering(true);
     const onCanPlay = () => setBuffering(false);
 
@@ -197,7 +200,8 @@ export function TuniflixHlsPlayer({
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('canplay', onCanPlay);
     };
-  }, [onPlaybackChange]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← intentionally empty — see onPlaybackChangeRef above
 
   // ── Volume persistence ────────────────────────────────────────────────────
   useEffect(() => {
