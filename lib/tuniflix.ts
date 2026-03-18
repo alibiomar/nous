@@ -127,7 +127,8 @@ async function captureM3U8(browser: Browser, embedUrl: string): Promise<string |
   let streamUrl: string | null = null;
 
   try {
-    // Block heavy assets to speed up load
+    // Block heavy assets to speed up load — but allow iframes and scripts
+    // because the m3u8 is requested from inside a nested iframe
     await page.route('**/*', (route) => {
       const type = route.request().resourceType();
       if (['image', 'stylesheet', 'font'].includes(type)) {
@@ -138,16 +139,33 @@ async function captureM3U8(browser: Browser, embedUrl: string): Promise<string |
     });
 
     const streamPromise = new Promise<string | null>((resolve) => {
-      page.on('request', (req) => {
-        const url = req.url();
-          console.log('[capture-req]', url.substring(0, 120));
+      let resolved = false;
 
-        if (url.includes('.m3u8')) resolve(url);
+      const onRequest = (req: { url: () => string }) => {
+        if (resolved) return;
+        const url = req.url();
+        if (url.includes('.m3u8')) {
+          resolved = true;
+          resolve(url);
+        }
+      };
+
+      // Listen on ALL frames — m3u8 comes from inside a nested iframe
+      page.on('request', onRequest);
+      page.on('framenavigated', (frame) => {
+        frame.page().on('request', onRequest);
       });
-      setTimeout(() => resolve(null), 12000);
+
+      setTimeout(() => {
+        if (!resolved) resolve(null);
+      }, 20000); // longer timeout to allow iframe chain to load
     });
 
     await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+    // Wait for iframes to load — the player is nested inside watch.strp2p.site
+    await page.waitForTimeout(3000);
+
     streamUrl = await streamPromise;
   } catch {
     // ignore — caller handles null
@@ -342,8 +360,6 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
     // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
     // Client uses this URL directly; token is IP-bound but client fetches with their own IP.
     const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
-    console.log('[tuniflix] embed:', embed, '→ stream:', stream);
-
     return setCached(cacheKey, { embed, stream }, TTL.episode);
   });
 }
@@ -360,8 +376,6 @@ export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
     const embed = normalizeUrl($('iframe').first().attr('src'));
     // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
     const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
-    console.log('[tuniflix] embed:', embed, '→ stream:', stream);
-
     return setCached(cacheKey, { title, embed, stream }, TTL.movie);
   });
 }
