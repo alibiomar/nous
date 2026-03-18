@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/accordion';
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
+import { useCinemaSync } from '@/hooks/use-cinema-sync';
 
 type Episode = {
   title: string;
@@ -79,6 +80,9 @@ export default function CinemaSeriesPage() {
       : null,
     [slug, selectedEpisode?.slug]
   );
+  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
+
+
 
   // ── Select episode (local — increments version) ───────────────────────────
   const selectEpisode = (episode: Episode, seasonKey: string) => {
@@ -392,19 +396,20 @@ export default function CinemaSeriesPage() {
       );
     }
 
-    // Embed fallback — JWPlayer controlled via postMessage for full sync
-    if (episodeSource?.embed) {
+    if (!episodeSource?.embed) {
       return (
-        <TuniflixEmbedPlayer
-          src={episodeSource.embed}
-          title={selectedEpisode?.title || 'Episode player'}
-          className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-        />
+        <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
       );
     }
 
     return (
-      <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
+      <TuniflixEmbedPlayer
+        src={episodeSource.embed}
+        title={selectedEpisode?.title || 'Episode player'}
+        className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+        externalSyncEvent={externalSyncEvent}
+        onPlaybackChange={handlePlaybackChange}
+      />
     );
   };
 

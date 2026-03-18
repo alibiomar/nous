@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { createClient } from '@/lib/client';
+import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
 
 type MoviePayload = {
@@ -28,6 +29,7 @@ export default function CinemaMoviePage() {
   const supabase = createClient();
   const syncId = useMemo(() => slug ? `cinema:movie:${slug}` : null, [slug]);
 
+  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
 
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,8 +42,7 @@ export default function CinemaMoviePage() {
   // Version guard — same pattern as series page
   const remoteVersionRef = useRef<number>(0);
 
-  // Use server-captured stream directly if available, otherwise try SW capture
-  const serverStream = movie?.stream ?? null;
+
 
   // ── Load movie ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,18 +207,17 @@ export default function CinemaMoviePage() {
   }
 
   const renderPlayer = () => {
-
-
     if (!movie.embed) {
       return <p className="text-sm text-muted-foreground">No playable source found.</p>;
     }
 
-    // Embed fallback — JWPlayer controlled via postMessage for full sync
     return (
       <TuniflixEmbedPlayer
         src={movie.embed}
         title={movie.title || 'Movie player'}
         className="h-[56vw] max-h-[70vh] min-h-75 w-full"
+        externalSyncEvent={externalSyncEvent}
+        onPlaybackChange={handlePlaybackChange}
       />
     );
   };
@@ -227,9 +227,11 @@ export default function CinemaMoviePage() {
       <section className="glass-panel rounded-3xl p-5 md:p-7">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Now playing</p>
         <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl">
-          {movie.title || slug}
+          {movie.title}
         </h1>
-
+        <p className="mt-2 text-sm text-muted-foreground">
+          Watching together.
+        </p>
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
