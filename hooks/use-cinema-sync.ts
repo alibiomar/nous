@@ -23,8 +23,6 @@ export function useCinemaSync(syncId: string | null) {
     const ch = supabase
       .channel(`cinema-sync-${syncId}`)
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
-            console.log('[cinema-sync] received', message);
-
         const payload = message.payload as Partial<HlsPlaybackPayload>;
         if (!payload || payload.syncId !== syncId) return;
         if (payload.senderId === senderIdRef.current) return;
@@ -35,9 +33,8 @@ export function useCinemaSync(syncId: string | null) {
 
         setExternalSyncEvent(payload as HlsPlaybackPayload);
       })
-       .subscribe((status:string) => {
-    console.log('[cinema-sync] status', status);
-  });
+      .subscribe();
+
     channelRef.current = ch;
     return () => {
       channelRef.current = null;
@@ -48,6 +45,8 @@ export function useCinemaSync(syncId: string | null) {
   // Called by the player when the local user plays/pauses/seeks
   const handlePlaybackChange = useCallback(
     async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
+          console.log('[cinema-sync] sending', action, currentTime, 'syncId:', syncId);
+
       if (!syncId) return;
       if (action === 'play') setIsPlaying(true);
       if (action === 'pause') setIsPlaying(false);
