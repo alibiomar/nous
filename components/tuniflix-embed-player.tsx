@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Play, Pause } from 'lucide-react';
 
 type PlaybackAction = 'play' | 'pause' | 'seek';
@@ -203,20 +203,6 @@ function YouTubeEmbedPlayer({
 // control isn't possible. Instead we show a lightweight sync overlay that
 // lets both users manually signal play/pause to each other.
 
-function requestNotificationPermission() {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'default') {
-    void Notification.requestPermission();
-  }
-}
-
-function showSyncNotification(body: string) {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'granted') {
-    new Notification('🎬 Cinema sync', { body, silent: true, icon: '/animated_heart_icon.svg' });
-  }
-}
-
 function GenericEmbedPlayer({
   src,
   title,
@@ -230,18 +216,35 @@ function GenericEmbedPlayer({
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
 }) {
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
-  // Request notification permission on mount so it's ready before fullscreen
-  useEffect(() => {
-    requestNotificationPermission();
-  }, []);
+  const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  };
 
-  // Show system notification when partner syncs — works even in fullscreen
+  // Always show toast — works everywhere including Safari, iOS, fullscreen
+  const notify = (msg: string) => {
+    showToast(msg);
+    // Also fire system notification on supported browsers if permission granted
+    if (typeof Notification !== 'undefined') {
+      if (Notification.permission === 'granted') {
+        new Notification('🎬 Cinema sync', { body: msg, silent: true });
+      } else if (Notification.permission === 'default') {
+        void Notification.requestPermission();
+      }
+    }
+  };
+
+  // Notify when partner syncs
   useEffect(() => {
     if (!externalSyncEvent) return;
     const time = externalSyncEvent.currentTime > 0
@@ -250,8 +253,13 @@ function GenericEmbedPlayer({
     const msg = externalSyncEvent.action === 'play'
       ? `Partner played${time}`
       : `Partner paused${time}`;
-    showSyncNotification(msg);
+    notify(msg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalSyncEvent]);
+
+  useEffect(() => {
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
 
   return (
     <div className="relative w-full">
@@ -299,6 +307,16 @@ function GenericEmbedPlayer({
           </span>
         )}
       </div>
+
+      {/* Fixed toast — visible even during fullscreen on Safari/iOS */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-9999 pointer-events-none">
+          <div className="flex items-center gap-2 rounded-full bg-black/80 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-xl">
+            <img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" />
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
