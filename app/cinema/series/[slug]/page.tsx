@@ -10,11 +10,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
-import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
-import { useCinemaSync } from '@/hooks/use-cinema-sync';
 
 type Episode = {
   title: string;
@@ -82,16 +79,6 @@ export default function CinemaSeriesPage() {
       : null,
     [slug, selectedEpisode?.slug]
   );
-  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
-
-  // Use server-captured stream directly if available, otherwise try SW capture
-  const serverStream = episodeSource?.stream ?? null;
-  const { streamUrl: swStreamUrl, loading: swCapturing } = useStreamCapture(
-    serverStream ? null : (episodeSource?.embed ?? null)
-  );
-  const streamUrl = serverStream ?? swStreamUrl;
-  // Only show spinner if we're actively doing SW capture (not when server stream exists)
-  const capturing = !serverStream && swCapturing;
 
   // ── Select episode (local — increments version) ───────────────────────────
   const selectEpisode = (episode: Episode, seasonKey: string) => {
@@ -405,32 +392,6 @@ export default function CinemaSeriesPage() {
       );
     }
 
-    // HLS stream captured — full sync via TuniflixHlsPlayer
-    if (streamUrl) {
-      return (
-        <TuniflixHlsPlayer
-          stream={streamUrl}
-          embedReferer={episodeSource?.embed ?? undefined}
-          syncId={syncId ?? undefined}
-          externalSyncEvent={externalSyncEvent}
-          onPlaybackChange={handlePlaybackChange}
-          className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-        />
-      );
-    }
-
-    // Still trying to capture stream
-    if (capturing) {
-      return (
-        <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-2xl bg-black/40 ring-1 ring-border/60">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
-            <p className="text-sm text-white/60">Connecting to stream...</p>
-          </div>
-        </div>
-      );
-    }
-
     // Embed fallback — JWPlayer controlled via postMessage for full sync
     if (episodeSource?.embed) {
       return (
@@ -438,8 +399,6 @@ export default function CinemaSeriesPage() {
           src={episodeSource.embed}
           title={selectedEpisode?.title || 'Episode player'}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-          externalSyncEvent={externalSyncEvent}
-          onPlaybackChange={handlePlaybackChange}
         />
       );
     }

@@ -2,11 +2,8 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
-import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { createClient } from '@/lib/client';
-import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
 
 type MoviePayload = {
@@ -31,7 +28,6 @@ export default function CinemaMoviePage() {
   const supabase = createClient();
   const syncId = useMemo(() => slug ? `cinema:movie:${slug}` : null, [slug]);
 
-  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
 
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,12 +42,6 @@ export default function CinemaMoviePage() {
 
   // Use server-captured stream directly if available, otherwise try SW capture
   const serverStream = movie?.stream ?? null;
-  const { streamUrl: swStreamUrl, loading: swCapturing } = useStreamCapture(
-    serverStream ? null : (movie?.embed ?? null)
-  );
-  const streamUrl = serverStream ?? swStreamUrl;
-  // Only show spinner if we're actively doing SW capture (not when server stream exists)
-  const capturing = !serverStream && swCapturing;
 
   // ── Load movie ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -216,31 +206,7 @@ export default function CinemaMoviePage() {
   }
 
   const renderPlayer = () => {
-    // HLS stream captured — full sync via TuniflixHlsPlayer
-    if (streamUrl) {
-      return (
-        <TuniflixHlsPlayer
-          stream={streamUrl}
-          embedReferer={movie.embed ?? undefined}
-          syncId={syncId ?? undefined}
-          externalSyncEvent={externalSyncEvent}
-          onPlaybackChange={handlePlaybackChange}
-          className="h-[56vw] max-h-[70vh] min-h-75 w-full"
-        />
-      );
-    }
 
-    // Still trying to capture stream
-    if (capturing) {
-      return (
-        <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
-          <div className="flex items-center gap-3">
-            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-            <p className="text-sm text-white/60">Connecting to stream...</p>
-          </div>
-        </div>
-      );
-    }
 
     if (!movie.embed) {
       return <p className="text-sm text-muted-foreground">No playable source found.</p>;
@@ -252,8 +218,6 @@ export default function CinemaMoviePage() {
         src={movie.embed}
         title={movie.title || 'Movie player'}
         className="h-[56vw] max-h-[70vh] min-h-75 w-full"
-        externalSyncEvent={externalSyncEvent}
-        onPlaybackChange={handlePlaybackChange}
       />
     );
   };
@@ -265,9 +229,7 @@ export default function CinemaMoviePage() {
         <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl">
           {movie.title || slug}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Playback sync enabled via embed player.'}
-        </p>
+
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">

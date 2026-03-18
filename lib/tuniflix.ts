@@ -366,8 +366,8 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
 
 export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
   const cacheKey = `movie:${slug.toLowerCase()}`;
-  //const cached = getCached<TuniflixMovieSource>(cacheKey);
- // if (cached) return cached;
+  const cached = getCached<TuniflixMovieSource>(cacheKey);
+  if (cached) return cached;
 
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/movie/${encodeURIComponent(slug)}`, browser);
