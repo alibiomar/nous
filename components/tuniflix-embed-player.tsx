@@ -253,7 +253,7 @@ function JWEmbedPlayer({
   className,
   externalSyncEvent,
   onPlaybackChange,
-  senderIdRef,
+  senderIdRef, 
 }: {
   src: string;
   title?: string;
