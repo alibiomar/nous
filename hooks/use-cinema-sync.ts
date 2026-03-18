@@ -50,31 +50,27 @@ useEffect(() => {
   };
 }, [syncId, supabase]);
   // Called by the player when the local user plays/pauses/seeks
-  const handlePlaybackChange = useCallback(
-    async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
-          console.log('[cinema-sync] sending', action, currentTime, 'syncId:', syncId);
-
-      if (!syncId) return;
-      if (action === 'play') setIsPlaying(true);
-      if (action === 'pause') setIsPlaying(false);
-
-      const ch = channelRef.current;
-      if (!ch) return;
-
-      await ch.send({
-        type: 'broadcast',
-        event: 'playback',
-        payload: {
-          syncId,
-          senderId: senderIdRef.current,
-          action,
-          currentTime,
-          happenedAt: Date.now(),
-        } satisfies HlsPlaybackPayload,
-      });
-    },
-    [syncId]
-  );
+const handlePlaybackChange = useCallback(
+  async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
+    console.log('[sync] handlePlaybackChange called', action, currentTime, 'syncId:', syncId, 'channel:', !!channelRef.current);
+    if (!syncId) return;
+    const ch = channelRef.current;
+    if (!ch) return;
+    const result = await ch.send({
+      type: 'broadcast',
+      event: 'playback',
+      payload: {
+        syncId,
+        senderId: senderIdRef.current,
+        action,
+        currentTime,
+        happenedAt: Date.now(),
+      } satisfies HlsPlaybackPayload,
+    });
+    console.log('[sync] send result:', result);
+  },
+  [syncId]
+);
 
   return { externalSyncEvent, isPlaying, handlePlaybackChange };
 }
