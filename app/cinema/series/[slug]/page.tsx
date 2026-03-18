@@ -14,6 +14,7 @@ import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
+import { title } from 'process';
 
 type Episode = {
   title: string;
@@ -511,8 +512,8 @@ export default function CinemaSeriesPage() {
           <Tv className="h-3.5 w-3.5" />
           Series
         </p>
-        <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground md:text-3xl break-all">
-          {slug}
+        <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl break-all">
+          {title}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">Pick an episode to watch together.</p>
 
@@ -577,7 +578,7 @@ export default function CinemaSeriesPage() {
                               disabled={!episode.slug || isLoadingEpisode}
                               onClick={() => selectEpisode(episode, seasonKey)}
                             >
-                              {episode.title || `Episode ${index + 1}`}
+                              { `Episode ${index + 1}`}
                               {isWatched && !isActive && (
                                 <span className="ml-auto text-[10px] opacity-60">✓</span>
                               )}
