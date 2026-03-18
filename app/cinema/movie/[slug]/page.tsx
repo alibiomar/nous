@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState,useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
+import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { createClient } from '@/lib/client';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
+
 type MoviePayload = {
   title: string;
   embed: string | null;
@@ -239,42 +241,15 @@ export default function CinemaMoviePage() {
       return <p className="text-sm text-muted-foreground">No playable source found.</p>;
     }
 
-    // Iframe fallback — manual sync overlay
+    // Embed fallback — JWPlayer controlled via postMessage for full sync
     return (
-      <div className="relative w-full">
-        <iframe
-          src={movie.embed}
-          className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
-          allowFullScreen
-          title={movie.title || 'Movie player'}
-        />
-        <div className="mt-2 flex items-center gap-3 px-1">
-          <button
-            type="button"
-            onClick={() => void handlePlaybackChange('play', 0)}
-            className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-          >
-            Broadcast play
-          </button>
-          <button
-            type="button"
-            onClick={() => void handlePlaybackChange('pause', 0)}
-            className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-          >
-            Broadcast pause
-          </button>
-          {externalSyncEvent && (
-            <span className="ml-auto text-xs text-primary animate-pulse">
-              Partner: {externalSyncEvent.action}
-              {externalSyncEvent.currentTime > 0
-                ? ` at ${Math.floor(externalSyncEvent.currentTime / 60)}:${String(
-                    Math.floor(externalSyncEvent.currentTime % 60)
-                  ).padStart(2, '0')}`
-                : ''}
-            </span>
-          )}
-        </div>
-      </div>
+      <TuniflixEmbedPlayer
+        src={movie.embed}
+        title={movie.title || 'Movie player'}
+        className="h-[56vw] max-h-[70vh] min-h-75 w-full"
+        externalSyncEvent={externalSyncEvent}
+        onPlaybackChange={handlePlaybackChange}
+      />
     );
   };
 
@@ -283,10 +258,10 @@ export default function CinemaMoviePage() {
       <section className="glass-panel rounded-3xl p-5 md:p-7">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Now playing</p>
         <h1 className="mt-2 text-2xl font-serif font-semibold text-foreground uppercase md:text-3xl">
-          {movie.title}
+          {movie.title || slug}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Using embed player — use broadcast buttons to sync.'}
+          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Playback sync enabled via embed player.'}
         </p>
       </section>
 

@@ -11,6 +11,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
+import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
@@ -425,43 +426,16 @@ export default function CinemaSeriesPage() {
       );
     }
 
-    // Iframe fallback — manual sync overlay since we cannot control the player programmatically
+    // Embed fallback — JWPlayer controlled via postMessage for full sync
     if (episodeSource?.embed) {
       return (
-        <div className="relative w-full">
-          <iframe
-            src={episodeSource.embed}
-            className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
-            allowFullScreen
-            title={selectedEpisode?.title || 'Episode player'}
-          />
-          <div className="mt-2 flex items-center gap-3 px-1">
-            <button
-              type="button"
-              onClick={() => void handlePlaybackChange('play', 0)}
-              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-            >
-              Broadcast play
-            </button>
-            <button
-              type="button"
-              onClick={() => void handlePlaybackChange('pause', 0)}
-              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-            >
-              Broadcast pause
-            </button>
-            {externalSyncEvent && (
-              <span className="ml-auto text-xs text-primary animate-pulse">
-                Partner: {externalSyncEvent.action}
-                {externalSyncEvent.currentTime > 0
-                  ? ` at ${Math.floor(externalSyncEvent.currentTime / 60)}:${String(
-                      Math.floor(externalSyncEvent.currentTime % 60)
-                    ).padStart(2, '0')}`
-                  : ''}
-              </span>
-            )}
-          </div>
-        </div>
+        <TuniflixEmbedPlayer
+          src={episodeSource.embed}
+          title={selectedEpisode?.title || 'Episode player'}
+          className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+          externalSyncEvent={externalSyncEvent}
+          onPlaybackChange={handlePlaybackChange}
+        />
       );
     }
 
