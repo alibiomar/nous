@@ -340,6 +340,8 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
     // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
     // Client uses this URL directly; token is IP-bound but client fetches with their own IP.
     const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
+    console.log('[tuniflix] embed:', embed, '→ stream:', stream);
+
     return setCached(cacheKey, { embed, stream }, TTL.episode);
   });
 }
@@ -356,6 +358,8 @@ export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
     const embed = normalizeUrl($('iframe').first().attr('src'));
     // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
     const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
+    console.log('[tuniflix] embed:', embed, '→ stream:', stream);
+
     return setCached(cacheKey, { title, embed, stream }, TTL.movie);
   });
 }
