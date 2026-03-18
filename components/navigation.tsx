@@ -97,7 +97,7 @@ export function Navigation() {
         <div className="px-3 pt-3">
           <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-3">
             <Link href="/feed" className="flex items-center gap-2" aria-label="Go to feed">
-              <Image src="/icon.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" />
+              <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" />
             </Link>
             <Link href="/account" className="inline-flex items-center" title="Go to account">
               <CurrentUserAvatar size="sm" />
