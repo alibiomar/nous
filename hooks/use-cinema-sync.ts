@@ -17,31 +17,38 @@ export function useCinemaSync(syncId: string | null) {
       : `host-${Math.random().toString(36).slice(2)}`
   );
 
-  useEffect(() => {
-    if (!syncId) return;
+useEffect(() => {
+  if (!syncId) return;
 
-    const ch = supabase
-      .channel(`cinema-sync-${syncId}`)
-      .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
-        const payload = message.payload as Partial<HlsPlaybackPayload>;
-        if (!payload || payload.syncId !== syncId) return;
-        if (payload.senderId === senderIdRef.current) return;
+  const ch = supabase
+    .channel(`cinema-sync-${syncId}`, {
+      config: { broadcast: { self: false, ack: false } },
+    })
+    .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
+      console.log('[cinema-sync] received', message);
+      const payload = message.payload as Partial<HlsPlaybackPayload>;
+      if (!payload || payload.syncId !== syncId) return;
+      if (payload.senderId === senderIdRef.current) return;
 
-        // Update parent's play state so a future play/pause button reflects reality
-        if (payload.action === 'play') setIsPlaying(true);
-        if (payload.action === 'pause') setIsPlaying(false);
+      if (payload.action === 'play') setIsPlaying(true);
+      if (payload.action === 'pause') setIsPlaying(false);
 
-        setExternalSyncEvent(payload as HlsPlaybackPayload);
-      })
-      .subscribe();
+      setExternalSyncEvent(payload as HlsPlaybackPayload);
+    })
+    .subscribe((status: string) => {
+      console.log('[cinema-sync] status', status);
+      if (status === 'SUBSCRIBED') {
+        channelRef.current = ch; // ← only assign after confirmed subscribed
+      } else {
+        channelRef.current = null; // ← clear on any other status
+      }
+    });
 
-    channelRef.current = ch;
-    return () => {
-      channelRef.current = null;
-      void supabase.removeChannel(ch);
-    };
-  }, [syncId, supabase]);
-
+  return () => {
+    channelRef.current = null;
+    void supabase.removeChannel(ch);
+  };
+}, [syncId, supabase]);
   // Called by the player when the local user plays/pauses/seeks
   const handlePlaybackChange = useCallback(
     async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
