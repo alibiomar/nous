@@ -295,6 +295,7 @@ function JWEmbedPlayer({
         // JWPlayer 8 sends plain objects; JWPlayer 7 sends JSON strings
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data || typeof data !== 'object') return;
+         console.log('[jw-message]', data); // ← add this
 
         // JWPlayer 8 wraps events in { id, type, data } — unwrap if needed
         const payload = data.type && data.data ? data.data : data;
