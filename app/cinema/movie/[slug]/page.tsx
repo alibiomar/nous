@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
@@ -18,6 +18,7 @@ type RoomStatePayload = {
   slug?: string;
   series?: string;
   episode?: string;
+  version?: number;
 };
 
 export default function CinemaMoviePage() {
@@ -29,19 +30,24 @@ export default function CinemaMoviePage() {
   const supabase = createClient();
   const syncId = slug ? `cinema:movie:${slug}` : null;
 
-const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syncId);
-    
+  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
+
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isClearing, setIsClearing] = useState(false);
+  const [clearVotes, setClearVotes] = useState(0);
+  const [votesRequired, setVotesRequired] = useState(2);
+  const [isVoting, setIsVoting] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
 
-  // Client-side stream capture — token is bound to user's IP, not server's
+  // Version guard — same pattern as series page
+  const remoteVersionRef = useRef<number>(0);
+
   const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
     movie?.embed ?? null
   );
 
-  // --- Load movie ---
+  // ── Load movie ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) {
       setError('Missing movie slug');
@@ -77,7 +83,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
     void load();
   }, [slug]);
 
-  // --- Broadcast selection ---
+  // ── Broadcast selection ───────────────────────────────────────────────────
   useEffect(() => {
     if (!movie || !slug) return;
     void fetch('/api/cinema-room-state', {
@@ -91,7 +97,7 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
     }).catch(() => undefined);
   }, [movie, slug, roomParam]);
 
-  // --- Subscribe to room state ---
+  // ── Subscribe to room state ───────────────────────────────────────────────
   useEffect(() => {
     if (!roomParam) return;
 
@@ -99,7 +105,22 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
       try {
         const res = await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`);
         if (!res.ok) return;
-        const data = await res.json() as { payload?: RoomStatePayload } | null;
+        const data = await res.json() as {
+          payload?: RoomStatePayload;
+          version?: number;
+          clearVotes?: number;
+          votesRequired?: number;
+        } | null;
+
+        if (data?.clearVotes !== undefined) setClearVotes(data.clearVotes);
+        if (data?.votesRequired !== undefined) setVotesRequired(data.votesRequired);
+
+        const remoteVersion = data?.version ?? 0;
+
+        // Only apply remote navigation if it's a genuinely newer state
+        if (remoteVersion <= remoteVersionRef.current) return;
+        remoteVersionRef.current = remoteVersion;
+
         const payload = data?.payload;
         if (!payload) return;
 
@@ -125,16 +146,48 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cinema_room_state' }, () => {
         void fetchState();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cinema_clear_votes' }, () => {
+        void fetchState();
+      })
       .subscribe();
 
     return () => void supabase.removeChannel(channel);
   }, [roomParam, slug, router, supabase]);
 
+  // ── Vote to clear room ────────────────────────────────────────────────────
+  const handleClearVote = async () => {
+    if (isVoting || hasVoted) return;
+    setIsVoting(true);
+    try {
+      const res = await fetch(
+        `/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      const data = await res.json() as {
+        cleared?: boolean;
+        votes?: number;
+        votesRequired?: number;
+      };
+
+      if (data.cleared) {
+        router.push('/cinema');
+      } else {
+        setHasVoted(true);
+        setClearVotes(data.votes ?? 1);
+        if (data.votesRequired) setVotesRequired(data.votesRequired);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-3xl p-8 flex">
-                        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-
+      <div className="glass-panel rounded-3xl p-8 flex items-center gap-3">
+        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
         <p className="text-muted-foreground">Loading movie...</p>
       </div>
     );
@@ -157,34 +210,30 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
   }
 
   const renderPlayer = () => {
-    // Stream successfully captured client-side
     if (streamUrl) {
       return (
         <TuniflixHlsPlayer
           stream={streamUrl}
           embedReferer={movie.embed ?? undefined}
           syncId={`cinema:movie:${slug}`}
-            externalSyncEvent={externalSyncEvent}          // ← NEW
-  onPlaybackChange={handlePlaybackChange}
+          externalSyncEvent={externalSyncEvent}
+          onPlaybackChange={handlePlaybackChange}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full"
         />
       );
     }
 
-    // Still trying to capture stream
     if (capturing) {
       return (
         <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
-          <div className="flex  items-center gap-3">
-                            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-
+          <div className="flex items-center gap-3">
+            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
             <p className="text-sm text-white/60">Connecting to stream...</p>
           </div>
         </div>
       );
     }
 
-    // Capture failed — fall back to iframe embed
     if (captureError && movie.embed) {
       return (
         <iframe
@@ -200,7 +249,6 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
       return <p className="text-sm text-muted-foreground">No playable source found.</p>;
     }
 
-    // embed exists, capture still in progress — show iframe as immediate fallback
     return (
       <iframe
         src={movie.embed}
@@ -215,37 +263,28 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
     <div className="space-y-5">
       <section className="glass-panel rounded-3xl p-5 md:p-7">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Now playing</p>
-
         <p className="mt-2 text-sm text-muted-foreground">
           {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
         </p>
-
       </section>
 
       <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
         {renderPlayer()}
-                <div className="mt-3">
+        <div className="mt-3">
           <Button
             type="button"
             variant="ghost"
             className="h-8 px-3 text-sm"
-            onClick={async () => {
-              if (isClearing) return;
-              setIsClearing(true);
-              try {
-                await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
-                  method: 'DELETE',
-                  credentials: 'include',
-                });
-                router.push('/cinema');
-              } catch (e) {
-                // ignore
-              } finally {
-                setIsClearing(false);
-              }
-            }}
+            disabled={isVoting || hasVoted}
+            onClick={handleClearVote}
           >
-            {isClearing ? 'Clearing…' : 'Watch something new'}
+            {isVoting
+              ? 'Voting…'
+              : hasVoted
+              ? `Waiting for other (${clearVotes}/${votesRequired})`
+              : clearVotes > 0
+              ? `Watch something new (${clearVotes}/${votesRequired})`
+              : 'Watch something new'}
           </Button>
         </div>
       </section>
