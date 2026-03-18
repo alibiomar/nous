@@ -301,10 +301,17 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
               <PlayCircle className="h-3.5 w-3.5" />
               Now playing
             </p>
-             <div className="mt-3">
+
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Select an episode to start.</p>
+        )}
+
+        <div className="mt-4">{renderPlayer()}</div>
+                     <div className="mt-3 w-full flex items-center justify-around gap-4">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 className="h-8 px-3 text-sm"
                 onClick={async () => {
                   if (isClearing) return;
@@ -324,7 +331,6 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
               >
                 {isClearing ? 'Clearing…' : 'Watch something new'}
               </Button>
-            </div>
             {nextEpisode && (
               <button
                 type="button"
@@ -333,13 +339,8 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
               >
                 Up next: {nextEpisode.title}
               </button>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">Select an episode to start.</p>
-        )}
+            )}            </div>
 
-        <div className="mt-4">{renderPlayer()}</div>
       </section>
 
       <aside className="order-2 glass-panel rounded-3xl border border-border/70 p-4 md:p-6 xl:order-2">

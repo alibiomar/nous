@@ -127,7 +127,7 @@ export default function CinemaPage() {
   // ── Loading state while checking room ─────────────────────────────────────
   if (isCheckingRoom) {
     return (
-      <div className="glass-panel rounded-3xl border border-border/70 p-12 text-center flex">
+      <div className="glass-panel rounded-3xl border border-border/70 p-12 text-center flex gap-3 items-center justify-center">
                         <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
 
         <p className="text-sm text-muted-foreground">Checking cinema room...</p>

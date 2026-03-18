@@ -219,10 +219,15 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
         <p className="mt-2 text-sm text-muted-foreground">
           {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
         </p>
-        <div className="mt-3">
+
+      </section>
+
+      <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
+        {renderPlayer()}
+                <div className="mt-3">
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             className="h-8 px-3 text-sm"
             onClick={async () => {
               if (isClearing) return;
@@ -243,10 +248,6 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
             {isClearing ? 'Clearing…' : 'Watch something new'}
           </Button>
         </div>
-      </section>
-
-      <section className="glass-panel rounded-3xl border border-border/70 p-4 md:p-6">
-        {renderPlayer()}
       </section>
     </div>
   );
