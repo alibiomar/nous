@@ -86,10 +86,12 @@ export default function CinemaSeriesPage() {
 
   // Use server-captured stream directly if available, otherwise try SW capture
   const serverStream = episodeSource?.stream ?? null;
-  const { streamUrl: swStreamUrl, loading: capturing } = useStreamCapture(
+  const { streamUrl: swStreamUrl, loading: swCapturing } = useStreamCapture(
     serverStream ? null : (episodeSource?.embed ?? null)
   );
   const streamUrl = serverStream ?? swStreamUrl;
+  // Only show spinner if we're actively doing SW capture (not when server stream exists)
+  const capturing = !serverStream && swCapturing;
 
   // ── Select episode (local — increments version) ───────────────────────────
   const selectEpisode = (episode: Episode, seasonKey: string) => {

@@ -275,31 +275,50 @@ function JWEmbedPlayer({
     suppressTimerRef.current = setTimeout(() => { suppressRef.current = false; }, SUPPRESS_MS);
   };
 
+  // JWPlayer 8 accepts both plain objects and JSON strings — send both formats
   const postToPlayer = (method: string, value?: number) => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     const msg: Record<string, unknown> = { method };
     if (value !== undefined) msg.value = value;
-    win.postMessage(JSON.stringify(msg), '*');
+    // JWPlayer 7 expects JSON string, JWPlayer 8 expects plain object
+    // Send both to cover all versions
+    try { win.postMessage(msg, '*'); } catch { /* ignore */ }
+    try { win.postMessage(JSON.stringify(msg), '*'); } catch { /* ignore */ }
   };
 
   // ── Listen for JWPlayer events ────────────────────────────────────────────
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       try {
+        // JWPlayer 8 sends plain objects; JWPlayer 7 sends JSON strings
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data || typeof data !== 'object') return;
 
-        if (typeof data.position === 'number') currentTimeRef.current = data.position;
-        if (data.event === 'ready') { setBuffering(false); return; }
-        if (data.event === 'buffer') { setBuffering(true); return; }
-        if (data.event === 'bufferFull' || data.event === 'firstFrame') { setBuffering(false); return; }
+        // JWPlayer 8 wraps events in { id, type, data } — unwrap if needed
+        const payload = data.type && data.data ? data.data : data;
+        const eventName: string = data.type ?? payload.event ?? '';
+        const position: number | undefined =
+          typeof payload.position === 'number' ? payload.position :
+          typeof data.currentTime === 'number' ? data.currentTime : undefined;
+
+        if (position !== undefined) currentTimeRef.current = position;
+
+        if (eventName === 'ready' || eventName === 'playerReady') { setBuffering(false); return; }
+        if (eventName === 'buffer' || eventName === 'bufferChange') { setBuffering(true); return; }
+        if (eventName === 'bufferFull' || eventName === 'firstFrame' || eventName === 'play') {
+          setBuffering(false);
+        }
 
         if (applyingRemoteRef.current || suppressRef.current) return;
 
-        if (data.event === 'play') onPlaybackChange?.('play', currentTimeRef.current);
-        else if (data.event === 'pause') onPlaybackChange?.('pause', currentTimeRef.current);
-        else if (data.event === 'seek') onPlaybackChange?.('seek', typeof data.position === 'number' ? data.position : currentTimeRef.current);
+        if (eventName === 'play') onPlaybackChange?.('play', currentTimeRef.current);
+        else if (eventName === 'pause') onPlaybackChange?.('pause', currentTimeRef.current);
+        else if (eventName === 'seek') onPlaybackChange?.('seek', position ?? currentTimeRef.current);
+        else if (eventName === 'time' && position !== undefined) {
+          // JWPlayer 8 fires 'time' events — update position ref silently
+          currentTimeRef.current = position;
+        }
       } catch { /* ignore */ }
     };
 
@@ -307,9 +326,12 @@ function JWEmbedPlayer({
     return () => window.removeEventListener('message', onMessage);
   }, [onPlaybackChange]);
 
-  // ── Poll position ─────────────────────────────────────────────────────────
+  // ── Poll position (fallback for players that don't push time events) ──────
   useEffect(() => {
-    const interval = setInterval(() => postToPlayer('getPosition'), 1000);
+    const interval = setInterval(() => {
+      postToPlayer('getPosition');     // JWPlayer 7
+      postToPlayer('getCurrentTime'); // JWPlayer 8 / generic
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 

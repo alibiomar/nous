@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState,useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
@@ -46,10 +46,12 @@ export default function CinemaMoviePage() {
 
   // Use server-captured stream directly if available, otherwise try SW capture
   const serverStream = movie?.stream ?? null;
-  const { streamUrl: swStreamUrl, loading: capturing } = useStreamCapture(
+  const { streamUrl: swStreamUrl, loading: swCapturing } = useStreamCapture(
     serverStream ? null : (movie?.embed ?? null)
   );
   const streamUrl = serverStream ?? swStreamUrl;
+  // Only show spinner if we're actively doing SW capture (not when server stream exists)
+  const capturing = !serverStream && swCapturing;
 
   // ── Load movie ────────────────────────────────────────────────────────────
   useEffect(() => {
