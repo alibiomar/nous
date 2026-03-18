@@ -203,6 +203,20 @@ function YouTubeEmbedPlayer({
 // control isn't possible. Instead we show a lightweight sync overlay that
 // lets both users manually signal play/pause to each other.
 
+function requestNotificationPermission() {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'default') {
+    void Notification.requestPermission();
+  }
+}
+
+function showSyncNotification(body: string) {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'granted') {
+    new Notification('🎬 Cinema sync', { body, silent: true, icon: '/animated_heart_icon.svg' });
+  }
+}
+
 function GenericEmbedPlayer({
   src,
   title,
@@ -216,17 +230,28 @@ function GenericEmbedPlayer({
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
 }) {
-  const lastEventRef = useRef<HlsPlaybackPayload | null>(null);
-
-  useEffect(() => {
-    lastEventRef.current = externalSyncEvent ?? null;
-  }, [externalSyncEvent]);
-
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${String(s).padStart(2, '0')}`;
   };
+
+  // Request notification permission on mount so it's ready before fullscreen
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  // Show system notification when partner syncs — works even in fullscreen
+  useEffect(() => {
+    if (!externalSyncEvent) return;
+    const time = externalSyncEvent.currentTime > 0
+      ? ` at ${formatTime(externalSyncEvent.currentTime)}`
+      : '';
+    const msg = externalSyncEvent.action === 'play'
+      ? `Partner played${time}`
+      : `Partner paused${time}`;
+    showSyncNotification(msg);
+  }, [externalSyncEvent]);
 
   return (
     <div className="relative w-full">
