@@ -12,18 +12,26 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
-  if (url.includes('.m3u8')) {
-    // Notify all clients about the captured m3u8
-    self.clients.matchAll().then((clients) => {
-      clients.forEach((client) => {
-        client.postMessage({
-          type: 'M3U8_CAPTURED',
-          url,
-        });
-      });
-    });
+  // Only observe — never intercept cross-origin or non-GET requests
+  if (
+    event.request.method !== 'GET' ||
+    !url.startsWith(self.location.origin) && !url.includes('.m3u8')
+  ) {
+    return; // ← do NOT call event.respondWith — let the browser handle it natively
   }
 
-  // Always let the request through
+  if (url.includes('.m3u8')) {
+    // Notify clients about the captured URL
+    self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({ type: 'M3U8_CAPTURED', url });
+      });
+    });
+
+    // Let the request through natively — don't proxy it
+    return;
+  }
+
+  // For same-origin GET requests, pass through normally
   event.respondWith(fetch(event.request));
 });
