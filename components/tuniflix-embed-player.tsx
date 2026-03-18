@@ -267,7 +267,8 @@ function JWEmbedPlayer({
   const applyingRemoteRef = useRef(false);
   const suppressRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [buffering, setBuffering] = useState(true);
+  // Start false — JWPlayer 8 doesn't reliably send ready via postMessage
+  const [buffering, setBuffering] = useState(false);
 
   const suppress = () => {
     if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
@@ -304,19 +305,24 @@ function JWEmbedPlayer({
 
         if (position !== undefined) currentTimeRef.current = position;
 
-        if (eventName === 'ready' || eventName === 'playerReady') { setBuffering(false); return; }
-        if (eventName === 'buffer' || eventName === 'bufferChange') { setBuffering(true); return; }
-        if (eventName === 'bufferFull' || eventName === 'firstFrame' || eventName === 'play') {
-          setBuffering(false);
-        }
+        // JWPlayer 8.36 event names
+        const isReady = eventName === 'ready' || eventName === 'playerReady' || eventName === 'jwReady';
+        const isBuffer = eventName === 'buffer' || eventName === 'bufferChange' || eventName === 'jwBuffer';
+        const isBufferFull = eventName === 'bufferFull' || eventName === 'firstFrame' || eventName === 'jwBufferFull';
+        const isPlay = eventName === 'play' || eventName === 'jwPlay';
+        const isPause = eventName === 'pause' || eventName === 'jwPause';
+        const isSeek = eventName === 'seek' || eventName === 'jwSeek';
+        const isTime = eventName === 'time' || eventName === 'jwTime';
+
+        if (isReady || isBufferFull) { setBuffering(false); }
+        if (isBuffer) { setBuffering(true); }
 
         if (applyingRemoteRef.current || suppressRef.current) return;
 
-        if (eventName === 'play') onPlaybackChange?.('play', currentTimeRef.current);
-        else if (eventName === 'pause') onPlaybackChange?.('pause', currentTimeRef.current);
-        else if (eventName === 'seek') onPlaybackChange?.('seek', position ?? currentTimeRef.current);
-        else if (eventName === 'time' && position !== undefined) {
-          // JWPlayer 8 fires 'time' events — update position ref silently
+        if (isPlay) onPlaybackChange?.('play', currentTimeRef.current);
+        else if (isPause) onPlaybackChange?.('pause', currentTimeRef.current);
+        else if (isSeek) onPlaybackChange?.('seek', position ?? currentTimeRef.current);
+        else if (isTime && position !== undefined) {
           currentTimeRef.current = position;
         }
       } catch { /* ignore */ }
@@ -329,8 +335,9 @@ function JWEmbedPlayer({
   // ── Poll position (fallback for players that don't push time events) ──────
   useEffect(() => {
     const interval = setInterval(() => {
-      postToPlayer('getPosition');     // JWPlayer 7
-      postToPlayer('getCurrentTime'); // JWPlayer 8 / generic
+      postToPlayer('getPosition');      // JWPlayer 7
+      postToPlayer('getCurrentTime');  // JWPlayer 8 generic
+      postToPlayer('jwGetPosition');   // JWPlayer 8.36
     }, 1000);
     return () => clearInterval(interval);
   }, []);
