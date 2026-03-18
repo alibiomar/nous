@@ -23,6 +23,8 @@ export function useCinemaSync(syncId: string | null) {
     const ch = supabase
       .channel(`cinema-sync-${syncId}`)
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
+            console.log('[cinema-sync] received', message);
+
         const payload = message.payload as Partial<HlsPlaybackPayload>;
         if (!payload || payload.syncId !== syncId) return;
         if (payload.senderId === senderIdRef.current) return;
@@ -33,8 +35,9 @@ export function useCinemaSync(syncId: string | null) {
 
         setExternalSyncEvent(payload as HlsPlaybackPayload);
       })
-      .subscribe();
-
+       .subscribe((status:string) => {
+    console.log('[cinema-sync] status', status);
+  });
     channelRef.current = ch;
     return () => {
       channelRef.current = null;
