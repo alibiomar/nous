@@ -84,9 +84,12 @@ export default function CinemaSeriesPage() {
   );
   const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
 
-  const { streamUrl, loading: capturing, result: captureResult } = useStreamCapture(
-    episodeSource?.embed ?? null
+  // Use server-captured stream directly if available, otherwise try SW capture
+  const serverStream = episodeSource?.stream ?? null;
+  const { streamUrl: swStreamUrl, loading: capturing } = useStreamCapture(
+    serverStream ? null : (episodeSource?.embed ?? null)
   );
+  const streamUrl = serverStream ?? swStreamUrl;
 
   // ── Select episode (local — increments version) ───────────────────────────
   const selectEpisode = (episode: Episode, seasonKey: string) => {

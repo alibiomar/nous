@@ -14,11 +14,11 @@ self.addEventListener('fetch', (event) => {
 
   // Only observe — never intercept cross-origin or non-GET requests
   if (
-    event.request.method !== 'GET' ||
-    !url.startsWith(self.location.origin) && !url.includes('.m3u8')
-  ) {
-    return; // ← do NOT call event.respondWith — let the browser handle it natively
-  }
+  event.request.method !== 'GET' ||
+  (!url.startsWith(self.location.origin) && !url.includes('.m3u8'))
+) {
+  return;
+}
 
   if (url.includes('.m3u8')) {
     // Notify clients about the captured URL

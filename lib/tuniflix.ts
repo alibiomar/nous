@@ -118,6 +118,44 @@ async function fetchHtmlWithBrowser(browser: Browser, url: string): Promise<stri
   }
 }
 
+// --- M3U8 capture (server-side) ---
+// Loads the embed URL in a real browser and intercepts the first .m3u8 request.
+// We only need the URL — the client will fetch the stream with their own IP.
+// Timeout is short (12s) so slow sources fall back to embed gracefully.
+async function captureM3U8(browser: Browser, embedUrl: string): Promise<string | null> {
+  const page = await browser.newPage();
+  let streamUrl: string | null = null;
+
+  try {
+    // Block heavy assets to speed up load
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'stylesheet', 'font'].includes(type)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+
+    const streamPromise = new Promise<string | null>((resolve) => {
+      page.on('request', (req) => {
+        const url = req.url();
+        if (url.includes('.m3u8')) resolve(url);
+      });
+      setTimeout(() => resolve(null), 12000);
+    });
+
+    await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    streamUrl = await streamPromise;
+  } catch {
+    // ignore — caller handles null
+  } finally {
+    await page.close();
+  }
+
+  return streamUrl;
+}
+
 // --- Smart fetch: lightweight first, browser fallback ---
 async function fetchHtml(url: string, browserInstance: Browser | null = null): Promise<string> {
   const lightweight = await fetchHtmlLightweight(url);
@@ -299,7 +337,10 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/episode/${encodeURIComponent(slug)}`, browser);
     const embed = normalizeUrl(cheerio.load(html)('iframe').first().attr('src'));
-    return setCached(cacheKey, { embed, stream: null }, TTL.episode);
+    // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
+    // Client uses this URL directly; token is IP-bound but client fetches with their own IP.
+    const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
+    return setCached(cacheKey, { embed, stream }, TTL.episode);
   });
 }
 
@@ -313,6 +354,8 @@ export async function getMovie(slug: string): Promise<TuniflixMovieSource> {
     const $ = cheerio.load(html);
     const title = $('h1').first().text().trim();
     const embed = normalizeUrl($('iframe').first().attr('src'));
-    return setCached(cacheKey, { title, embed, stream: null }, TTL.movie);
+    // Capture stream server-side — avoids ad-blocker detection in the embed iframe.
+    const stream = embed ? await captureM3U8(browser, embed).catch(() => null) : null;
+    return setCached(cacheKey, { title, embed, stream }, TTL.movie);
   });
 }
