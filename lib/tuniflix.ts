@@ -140,6 +140,8 @@ async function captureM3U8(browser: Browser, embedUrl: string): Promise<string |
     const streamPromise = new Promise<string | null>((resolve) => {
       page.on('request', (req) => {
         const url = req.url();
+          console.log('[capture-req]', url.substring(0, 120));
+
         if (url.includes('.m3u8')) resolve(url);
       });
       setTimeout(() => resolve(null), 12000);
