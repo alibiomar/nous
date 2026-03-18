@@ -9,7 +9,12 @@ export interface TuniflixSearchResult {
   title: string; slug: string; type: 'movie' | 'series';
   image: string | null; link: string;
 }
-export interface TuniflixEpisodeItem { title: string; slug: string | null; link: string | null; }
+export interface TuniflixEpisodeItem {
+  title: string;
+  slug: string | null;
+  link: string | null;
+  number: number; // ← FIXED: added missing number field
+}
 export interface TuniflixSeason { season: string; episodes: TuniflixEpisodeItem[]; }
 export interface TuniflixEpisodeSource { embed: string | null; stream: string | null; }
 export interface TuniflixMovieSource { title: string; embed: string | null; stream: string | null; }
@@ -64,7 +69,7 @@ async function fetchHtmlLightweight(url: string): Promise<string | null> {
   }
 }
 
-// --- Browser launch (updated) ---
+// --- Browser launch ---
 async function launchBrowser(): Promise<Browser> {
   return playwrightChromium.launch({
     args: chromium.args,
@@ -124,42 +129,20 @@ async function fetchHtml(url: string, browserInstance: Browser | null = null): P
   return withBrowser((browser) => fetchHtmlWithBrowser(browser, url));
 }
 
-// --- M3U8 capture ---
-async function captureM3U8(browser: Browser, embedUrl: string): Promise<string | null> {
-  const page = await browser.newPage();
-  let streamUrl: string | null = null;
-
-  try {
-    await page.route('**/*', (route) => {
-      const type = route.request().resourceType();
-      if (['image', 'stylesheet', 'font'].includes(type)) {
-        route.abort();
-      } else {
-        route.continue();
-      }
-    });
-
-    const streamPromise = new Promise<string | null>((resolve) => {
-      page.on('request', (req) => {
-        if (req.url().includes('.m3u8')) resolve(req.url());
-      });
-      setTimeout(() => resolve(null), 10000);
-    });
-
-    await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 18000 });
-    streamUrl = await streamPromise;
-  } catch (err) {
-    console.error('M3U8 capture error:', err);
-  } finally {
-    await page.close();
-  }
-
-  return streamUrl;
-}
-
 // --- Utils ---
+
+// FIXED: handle protocol-relative URLs like //image.tmdb.org/...
+// Previously, passing "//image.tmdb.org/..." to new URL(url, BASE_URL)
+// would produce "https://tuniflix.site//image.tmdb.org/..." — broken.
 function normalizeUrl(url: string | undefined): string | null {
   if (!url) return null;
+  // Protocol-relative → prepend https:
+  if (url.startsWith('//')) return 'https:' + url;
+  // Already absolute → return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try { return new URL(url).toString(); } catch { return null; }
+  }
+  // Relative → resolve against BASE_URL
   try { return new URL(url, BASE_URL).toString(); } catch { return null; }
 }
 
@@ -201,7 +184,13 @@ export async function searchTuniflix(query: string): Promise<TuniflixSearchResul
       if (!title || !link || !slug) return;
 
       const img = $(el).find('img').first();
-      const rawImage = img.attr('src') ?? img.attr('data-src');
+      // FIXED: check multiple lazy-load attributes in priority order.
+      // normalizeUrl now correctly handles protocol-relative URLs (//image.tmdb.org/...).
+      const rawImage =
+        img.attr('data-lazy-src') ??
+        img.attr('data-original') ??
+        img.attr('data-src') ??
+        img.attr('src');
 
       results.push({
         title, slug,
@@ -265,6 +254,7 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
             title: $$(anchor).text().trim() || (season.number ? `Episode ${season.number}x${n}` : `Episode ${n}`),
             slug: episodeSlug,
             link,
+            number: n, // ← FIXED: valid per updated interface
           });
         });
 
@@ -282,10 +272,12 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
         const episodeSlug = extractSlug(link);
         if (!link || !episodeSlug || seen.has(episodeSlug)) return;
         seen.add(episodeSlug);
+        const n = fallback.length + 1;
         fallback.push({
-          title: $(anchor).text().trim() || `Episode ${fallback.length + 1}`,
+          title: $(anchor).text().trim() || `Episode ${n}`,
           slug: episodeSlug,
           link,
+          number: n, // ← FIXED: present in fallback block too
         });
       });
       if (fallback.length > 0) seasons = [{ season: 'Season 1', episodes: fallback }];
@@ -295,7 +287,6 @@ export async function getSeries(slug: string): Promise<TuniflixSeason[]> {
   });
 }
 
-// In tuniflix.ts — simplify getEpisode and getMovie
 export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   const cacheKey = `episode:${slug.toLowerCase()}`;
   const cached = getCached<TuniflixEpisodeSource>(cacheKey);
@@ -304,7 +295,6 @@ export async function getEpisode(slug: string): Promise<TuniflixEpisodeSource> {
   return withBrowser(async (browser) => {
     const html = await fetchHtml(`${BASE_URL}/episode/${encodeURIComponent(slug)}`, browser);
     const embed = normalizeUrl(cheerio.load(html)('iframe').first().attr('src'));
-    // No more captureM3U8 — stream is captured client-side
     return setCached(cacheKey, { embed, stream: null }, TTL.episode);
   });
 }

@@ -12,13 +12,14 @@ import {
 } from '@/components/ui/accordion';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
-import { Layers, PlayCircle, Tv } from 'lucide-react';
+import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 
 type Episode = {
   title: string;
   slug: string | null;
   link: string | null;
+  number: number;
 };
 
 type Season = {
@@ -294,54 +295,79 @@ const { externalSyncEvent, isPlaying, handlePlaybackChange } = useCinemaSync(syn
 
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="order-1 glass-panel rounded-3xl border border-border/70 p-4 md:p-6 xl:order-1">
-        {selectedEpisode ? (
-          <>
-            <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              <PlayCircle className="h-3.5 w-3.5" />
-              Now playing
-            </p>
+      <section className="order-1 glass-panel rounded-3xl border border-border/70 p-5 md:p-6 xl:order-1 flex flex-col gap-5">
+  {/* Header */}
+  <div className="flex items-center justify-between">
+    {selectedEpisode ? (
+      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <PlayCircle className="h-3.5 w-3.5" />
+        Now playing
+      </div>
+    ) : (
+      <p className="text-sm text-muted-foreground">
+        Select an episode to start.
+      </p>
+    )}
+  </div>
 
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">Select an episode to start.</p>
-        )}
+  {/* Player */}
+  <div className="w-full rounded-xl overflow-hidden bg-black/30">
+    {renderPlayer()}
+  </div>
 
-        <div className="mt-4">{renderPlayer()}</div>
-                     <div className="mt-3 w-full flex items-center justify-around gap-4">
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-3 text-sm"
-                onClick={async () => {
-                  if (isClearing) return;
-                  setIsClearing(true);
-                  try {
-                    await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
-                      method: 'DELETE',
-                      credentials: 'include',
-                    });
-                    router.push('/cinema');
-                  } catch (e) {
-                    // ignore
-                  } finally {
-                    setIsClearing(false);
-                  }
-                }}
-              >
-                {isClearing ? 'Clearing…' : 'Watch something new'}
-              </Button>
-            {nextEpisode && (
-              <button
-                type="button"
-                onClick={() => setSelectedEpisode(nextEpisode)}
-                className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
-              >
-                Up next: {nextEpisode.title}
-              </button>
-            )}            </div>
+  {/* Footer / Controls */}
+  <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-2 border-t border-border/50">
+    
+    {/* Primary Action */}
+    <Button
+      type="button"
+      variant="ghost"
+      className="h-9 px-4 text-sm w-full md:w-auto"
+      onClick={async () => {
+        if (isClearing) return;
+        setIsClearing(true);
+        try {
+          await fetch(`/api/cinema-room-state?room=${encodeURIComponent(roomParam)}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          router.push('/cinema');
+        } catch (e) {
+          // ignore
+        } finally {
+          setIsClearing(false);
+        }
+      }}
+    >
+      {isClearing ? 'Clearing…' : 'Watch something new'}
+    </Button>
 
-      </section>
+    {/* Next Episode */}
+    {nextEpisode && (
+  <button
+    type="button"
+    onClick={() => setSelectedEpisode(nextEpisode)}
+    className="group w-full md:w-auto flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 px-4 py-3 text-left transition-all hover:bg-background/70 hover:border-border hover:shadow-md"
+  >
+    {/* Text */}
+    <div className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        Up next
+      </span>
+      <span className="text-xs text-muted-foreground">
+  Episode {nextEpisode.number}
+</span>
+    </div>
+
+    {/* Arrow */}
+    <div className="flex items-center justify-center rounded-full bg-muted/50 p-2 transition-all group-hover:translate-x-1 group-hover:bg-muted">
+      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+    </div>
+  </button>
+)}
+    
+  </div>
+</section>
 
       <aside className="order-2 glass-panel rounded-3xl border border-border/70 p-4 md:p-6 xl:order-2">
         <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
