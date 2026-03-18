@@ -75,12 +75,15 @@ export default function CinemaSeriesPage() {
   const localVersionRef = useRef<number>(0);
   const remoteVersionRef = useRef<number>(0);
 
-  const syncId = slug && selectedEpisode?.slug
-    ? `cinema:series:${slug}:${selectedEpisode.slug}`
-    : null;
+  const syncId = useMemo(
+    () => slug && selectedEpisode?.slug
+      ? `cinema:series:${slug}:${selectedEpisode.slug}`
+      : null,
+    [slug, selectedEpisode?.slug]
+  );
   const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
 
-  const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
+  const { streamUrl, loading: capturing, result: captureResult } = useStreamCapture(
     episodeSource?.embed ?? null
   );
 
@@ -396,12 +399,13 @@ export default function CinemaSeriesPage() {
       );
     }
 
+    // HLS stream captured — full sync via TuniflixHlsPlayer
     if (streamUrl) {
       return (
         <TuniflixHlsPlayer
           stream={streamUrl}
           embedReferer={episodeSource?.embed ?? undefined}
-          syncId={`cinema:series:${slug}:${selectedEpisode?.slug ?? 'unknown'}`}
+          syncId={syncId ?? undefined}
           externalSyncEvent={externalSyncEvent}
           onPlaybackChange={handlePlaybackChange}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
@@ -409,6 +413,7 @@ export default function CinemaSeriesPage() {
       );
     }
 
+    // Still trying to capture stream
     if (capturing) {
       return (
         <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-2xl bg-black/40 ring-1 ring-border/60">
@@ -420,14 +425,43 @@ export default function CinemaSeriesPage() {
       );
     }
 
+    // Iframe fallback — manual sync overlay since we cannot control the player programmatically
     if (episodeSource?.embed) {
       return (
-        <iframe
-          src={episodeSource.embed}
-          className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
-          allowFullScreen
-          title={selectedEpisode?.title || 'Episode player'}
-        />
+        <div className="relative w-full">
+          <iframe
+            src={episodeSource.embed}
+            className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-2xl ring-1 ring-border/60"
+            allowFullScreen
+            title={selectedEpisode?.title || 'Episode player'}
+          />
+          <div className="mt-2 flex items-center gap-3 px-1">
+            <button
+              type="button"
+              onClick={() => void handlePlaybackChange('play', 0)}
+              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+            >
+              Broadcast play
+            </button>
+            <button
+              type="button"
+              onClick={() => void handlePlaybackChange('pause', 0)}
+              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+            >
+              Broadcast pause
+            </button>
+            {externalSyncEvent && (
+              <span className="ml-auto text-xs text-primary animate-pulse">
+                Partner: {externalSyncEvent.action}
+                {externalSyncEvent.currentTime > 0
+                  ? ` at ${Math.floor(externalSyncEvent.currentTime / 60)}:${String(
+                      Math.floor(externalSyncEvent.currentTime % 60)
+                    ).padStart(2, '0')}`
+                  : ''}
+              </span>
+            )}
+          </div>
+        </div>
       );
     }
 
@@ -580,7 +614,7 @@ export default function CinemaSeriesPage() {
                               disabled={!episode.slug || isLoadingEpisode}
                               onClick={() => selectEpisode(episode, seasonKey)}
                             >
-                              { `Episode ${index + 1}`}
+                              {`Episode ${index + 1}`}
                               {isWatched && !isActive && (
                                 <span className="ml-auto text-[10px] opacity-60">✓</span>
                               )}

@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState,useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TuniflixHlsPlayer } from '@/components/tuniflix-hls-player';
 import { useStreamCapture } from '@/hooks/use-stream-capture';
 import { createClient } from '@/lib/client';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
-
 type MoviePayload = {
   title: string;
   embed: string | null;
@@ -28,7 +27,7 @@ export default function CinemaMoviePage() {
   const search = useSearchParams();
   const roomParam = search?.get('room') ?? 'cinema:shared';
   const supabase = createClient();
-  const syncId = slug ? `cinema:movie:${slug}` : null;
+  const syncId = useMemo(() => slug ? `cinema:movie:${slug}` : null, [slug]);
 
   const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
 
@@ -43,7 +42,7 @@ export default function CinemaMoviePage() {
   // Version guard — same pattern as series page
   const remoteVersionRef = useRef<number>(0);
 
-  const { streamUrl, loading: capturing, error: captureError } = useStreamCapture(
+  const { streamUrl, loading: capturing, result: captureResult } = useStreamCapture(
     movie?.embed ?? null
   );
 
@@ -210,12 +209,13 @@ export default function CinemaMoviePage() {
   }
 
   const renderPlayer = () => {
+    // HLS stream captured — full sync via TuniflixHlsPlayer
     if (streamUrl) {
       return (
         <TuniflixHlsPlayer
           stream={streamUrl}
           embedReferer={movie.embed ?? undefined}
-          syncId={`cinema:movie:${slug}`}
+          syncId={syncId ?? undefined}
           externalSyncEvent={externalSyncEvent}
           onPlaybackChange={handlePlaybackChange}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full"
@@ -223,6 +223,7 @@ export default function CinemaMoviePage() {
       );
     }
 
+    // Still trying to capture stream
     if (capturing) {
       return (
         <div className="flex h-[56vw] max-h-[70vh] min-h-75 w-full items-center justify-center rounded-xl bg-black/40">
@@ -234,28 +235,46 @@ export default function CinemaMoviePage() {
       );
     }
 
-    if (captureError && movie.embed) {
-      return (
+    if (!movie.embed) {
+      return <p className="text-sm text-muted-foreground">No playable source found.</p>;
+    }
+
+    // Iframe fallback — manual sync overlay
+    return (
+      <div className="relative w-full">
         <iframe
           src={movie.embed}
           className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
           allowFullScreen
           title={movie.title || 'Movie player'}
         />
-      );
-    }
-
-    if (!movie.embed) {
-      return <p className="text-sm text-muted-foreground">No playable source found.</p>;
-    }
-
-    return (
-      <iframe
-        src={movie.embed}
-        className="h-[56vw] max-h-[70vh] min-h-75 w-full rounded-xl"
-        allowFullScreen
-        title={movie.title || 'Movie player'}
-      />
+        <div className="mt-2 flex items-center gap-3 px-1">
+          <button
+            type="button"
+            onClick={() => void handlePlaybackChange('play', 0)}
+            className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+          >
+            Broadcast play
+          </button>
+          <button
+            type="button"
+            onClick={() => void handlePlaybackChange('pause', 0)}
+            className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+          >
+            Broadcast pause
+          </button>
+          {externalSyncEvent && (
+            <span className="ml-auto text-xs text-primary animate-pulse">
+              Partner: {externalSyncEvent.action}
+              {externalSyncEvent.currentTime > 0
+                ? ` at ${Math.floor(externalSyncEvent.currentTime / 60)}:${String(
+                    Math.floor(externalSyncEvent.currentTime % 60)
+                  ).padStart(2, '0')}`
+                : ''}
+            </span>
+          )}
+        </div>
+      </div>
     );
   };
 
@@ -267,7 +286,7 @@ export default function CinemaMoviePage() {
           {movie.title}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Sync unavailable — using embed player.'}
+          {streamUrl ? 'Playback sync enabled.' : capturing ? 'Connecting...' : 'Using embed player — use broadcast buttons to sync.'}
         </p>
       </section>
 
