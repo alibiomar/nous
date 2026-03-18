@@ -122,34 +122,31 @@ export default function CinemaSeriesPage() {
         const loaded = Array.isArray(data) ? data : [];
         setSeasons(loaded);
 
-        // Build watched set
+        // Build watched set — parse history once and reuse
         let watched = new Set<string>();
+        let history: WatchedEpisode[] = [];
         if (historyRes.ok) {
-          const history = (await historyRes.json()) as WatchedEpisode[];
+          history = (await historyRes.json()) as WatchedEpisode[];
           watched = new Set(history.map((h) => h.episode_slug));
           setWatchedSlugs(watched);
         }
 
-        // Prefer ?episode= param, then last watched, then first episode
-        const episodeParam = search?.get('episode');
         const allEpisodes = loaded.flatMap((s) => s.episodes).filter((e) => Boolean(e.slug));
 
+        // Priority: ?episode= param → last watched (by watched_at desc) → first episode
+        const episodeParam = search?.get('episode');
         let toSelect: Episode | undefined;
 
         if (episodeParam) {
           toSelect = allEpisodes.find((e) => e.slug === episodeParam);
         }
 
-        if (!toSelect && watched.size > 0) {
-          // Find the last watched episode that still exists in the series
-          // We'll match by slug against history order (history is desc by watched_at)
-          if (historyRes.ok) {
-            const history = (await historyRes.clone?.().json?.().catch(() => null) ?? null) as WatchedEpisode[] | null;
-            // history is already consumed above — use watchedSlugs order isn't guaranteed,
-            // so find the episode with the highest episode_number in watched set
-            toSelect = allEpisodes
-              .filter((e) => e.slug && watched.has(e.slug))
-              .sort((a, b) => b.number - a.number)[0];
+        if (!toSelect && history.length > 0) {
+          // history is already sorted desc by watched_at from the API
+          // find the most recently watched episode that still exists in the loaded series
+          for (const h of history) {
+            const match = allEpisodes.find((e) => e.slug === h.episode_slug);
+            if (match) { toSelect = match; break; }
           }
         }
 
@@ -158,7 +155,12 @@ export default function CinemaSeriesPage() {
         }
 
         if (toSelect) {
-          const idx = loaded.findIndex((s) => s.episodes.some((e) => e.slug === toSelect!.slug));
+          const idx = loaded.findIndex((s) =>
+            s.episodes.some((e) => e.slug === toSelect!.slug)
+          );
+          // Use setSelectedEpisode directly here (not selectEpisode) so localVersionRef
+          // stays at 0 — this lets the remote room state still take over on initial load
+          // if the other user is watching a different episode.
           setSelectedEpisode(toSelect);
           if (idx >= 0) setOpenSeason(`season-${idx}`);
         }
@@ -324,13 +326,19 @@ export default function CinemaSeriesPage() {
 
   useEffect(() => {
     const episodeParam = search?.get('episode');
+    // Guard: no param, seasons not loaded yet, or already on this episode
     if (!episodeParam || flattenedEpisodes.length === 0) return;
+    if (selectedEpisode?.slug === episodeParam) return;
+
     const match = flattenedEpisodes.find((e) => e.slug === episodeParam);
-    if (!match || match.slug === selectedEpisode?.slug) return;
-    const idx = seasons.findIndex((s) => s.episodes.some((e) => e.slug === episodeParam));
-    selectEpisode(match, idx >= 0 ? `season-${idx}` : openSeason);
+    if (!match) return;
+
+    const idx = seasons.findIndex((s) =>
+      s.episodes.some((e) => e.slug === episodeParam)
+    );
+    selectEpisode(match, idx >= 0 ? `season-${idx}` : 'season-0');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, flattenedEpisodes]);
+  }, [search, flattenedEpisodes, seasons]);
 
   const selectedEpisodeIndex = useMemo(
     () => flattenedEpisodes.findIndex((e) => e.slug === selectedEpisode?.slug),
