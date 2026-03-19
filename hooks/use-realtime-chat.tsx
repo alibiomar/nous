@@ -1,9 +1,9 @@
 'use client'
-
+ 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-
+ 
 import { createClient } from '@/lib/client'
-
+ 
 interface UseRealtimeChatProps {
   roomName: string
   username: string
@@ -11,7 +11,7 @@ interface UseRealtimeChatProps {
   userAvatarUrl?: string | null
   initialMessages?: ChatMessage[]
 }
-
+ 
 export interface ChatMessage {
   id: string
   sender_id?: string
@@ -26,7 +26,7 @@ export interface ChatMessage {
   }
   createdAt: string
 }
-
+ 
 const EVENT_MESSAGE_TYPE = 'message'
 const EVENT_EDIT_TYPE = 'message:edit'
 const EVENT_DELETE_TYPE = 'message:delete'
@@ -35,42 +35,43 @@ const EVENT_TYPING_TYPE = 'typing'
 const EVENT_PEER_PRESENCE_TYPE = 'peer:presence'
 const EVENT_CALL_INVITE_TYPE = 'call:invite'
 const EVENT_CALL_INVITE_CLEAR_TYPE = 'call:invite:clear'
-
+ 
 interface BroadcastPayload<T> {
   payload: T
 }
-
+ 
 interface SendMessagePayload {
   content: string | null
   imageUrl?: string | null
+  skipLocalState?: boolean
 }
-
+ 
 interface PeerPresencePayload {
   userId: string
   username: string
   peerId: string
 }
-
+ 
 interface CallInvitePayload {
   roomName: string
   fromUserId: string
   fromUsername: string
   toUserId: string
 }
-
+ 
 interface UnreadIncrementPayload {
   recipientId: string
   delta?: number
 }
-
+ 
 export interface IncomingCallInvite {
   roomName: string
   fromUserId: string
   fromUsername: string
 }
-
+ 
 type BroadcastStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR'
-
+ 
 export function useRealtimeChat({ roomName, username, currentUserId, userAvatarUrl, initialMessages = [] }: UseRealtimeChatProps) {
   const supabase = useMemo(() => createClient(), [])
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
@@ -79,7 +80,7 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
   const [partnerIsTyping, setPartnerIsTyping] = useState(false)
   const [peerDirectory, setPeerDirectory] = useState<Record<string, string>>({})
   const [incomingCallInvite, setIncomingCallInvite] = useState<IncomingCallInvite | null>(null)
-
+ 
   // Update messages when initialMessages change
   useEffect(() => {
     setMessages((current) => {
@@ -89,7 +90,7 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
       return [...initialMessages, ...current.filter(m => !initialMessages.some(im => im.id === m.id))]
     })
   }, [initialMessages.length]) // Only when initial messages change
-
+ 
   useEffect(() => {
     const handleAddMessageEvent = (e: Event) => {
       const customEvent = e as CustomEvent<ChatMessage>
@@ -100,16 +101,16 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
         })
       }
     }
-
+ 
     window.addEventListener('chat:add_message', handleAddMessageEvent)
     return () => {
       window.removeEventListener('chat:add_message', handleAddMessageEvent)
     }
   }, [])
-
+ 
   useEffect(() => {
     const newChannel = supabase.channel(roomName)
-
+ 
     newChannel
       .on('broadcast', { event: EVENT_MESSAGE_TYPE }, (payload: BroadcastPayload<ChatMessage>) => {
         setMessages((current) => {
@@ -140,20 +141,20 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
       })
       .on('broadcast', { event: EVENT_PEER_PRESENCE_TYPE }, (payload: BroadcastPayload<PeerPresencePayload>) => {
         const presence = payload.payload
-
+ 
         if (!presence?.userId || !presence?.peerId) {
           return
         }
-
+ 
         if (presence.userId === currentUserId) {
           return
         }
-
+ 
         setPeerDirectory((current) => {
           if (current[presence.userId] === presence.peerId) {
             return current
           }
-
+ 
           return {
             ...current,
             [presence.userId]: presence.peerId,
@@ -162,11 +163,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
       })
       .on('broadcast', { event: EVENT_CALL_INVITE_TYPE }, (payload: BroadcastPayload<CallInvitePayload>) => {
         const invite = payload.payload
-
+ 
         if (!invite?.toUserId || invite.toUserId !== currentUserId) {
           return
         }
-
+ 
         setIncomingCallInvite({
           roomName: invite.roomName,
           fromUserId: invite.fromUserId,
@@ -185,19 +186,19 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
           setIsConnected(false)
         }
       })
-
+ 
     setChannel(newChannel)
-
+ 
     return () => {
       setPartnerIsTyping(false)
       supabase.removeChannel(newChannel)
     }
   }, [roomName, username, supabase])
-
+ 
   const sendMessage = useCallback(
-    async ({ content, imageUrl }: SendMessagePayload) => {
+    async ({ content, imageUrl, skipLocalState = false }: SendMessagePayload) => {
       if (!content && !imageUrl) return
-
+ 
       const message: ChatMessage = {
         id: crypto.randomUUID(),
         sender_id: currentUserId,
@@ -210,12 +211,15 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
         },
         createdAt: new Date().toISOString(),
       }
-
-      // Update local state immediately for the sender
-      setMessages((current) => [...current, message])
-
+ 
+      // Skip adding to local state when the caller handles it via chat:add_message
+      // (fired after API success with real DB id) to avoid duplicate messages
+      if (!skipLocalState) {
+        setMessages((current) => [...current, message])
+      }
+ 
       if (!channel || !isConnected) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_MESSAGE_TYPE,
@@ -224,11 +228,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected, username, currentUserId, userAvatarUrl]
   )
-
+ 
   const broadcastEditMessage = useCallback(
     async (messageId: string, content: string) => {
       if (!channel || !isConnected) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_EDIT_TYPE,
@@ -237,11 +241,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected]
   )
-
+ 
   const broadcastDeleteMessage = useCallback(
     async (messageId: string) => {
       if (!channel || !isConnected) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_DELETE_TYPE,
@@ -250,11 +254,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected]
   )
-
+ 
   const broadcastUnreadIncrement = useCallback(
     async ({ recipientId, delta = 1 }: UnreadIncrementPayload) => {
       if (!supabase || !recipientId) return
-
+ 
       // Create a temporary channel to broadcast directly to the recipient's personal notification listener
       const channelName = `user-notifications-${recipientId}`
       const notifChannel = supabase.channel(channelName)
@@ -268,7 +272,7 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
         })
         return
       }
-
+ 
       return new Promise<void>((resolve) => {
         let isCleaningUp = false
         notifChannel.subscribe(async (status: string) => {
@@ -299,11 +303,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [supabase, currentUserId]
   )
-
+ 
   const broadcastTypingStatus = useCallback(
     async (isTyping: boolean) => {
       if (!channel || !isConnected) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_TYPING_TYPE,
@@ -312,11 +316,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected, username]
   )
-
+ 
   const broadcastPeerPresence = useCallback(
     async (peerId: string) => {
       if (!channel || !isConnected || !peerId) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_PEER_PRESENCE_TYPE,
@@ -329,11 +333,11 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected, currentUserId, username]
   )
-
+ 
   const broadcastCallInvite = useCallback(
     async ({ roomName, toUserId }: { roomName: string; toUserId: string }) => {
       if (!channel || !isConnected || !roomName || !toUserId) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_CALL_INVITE_TYPE,
@@ -347,13 +351,13 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected, currentUserId, username]
   )
-
+ 
   const clearIncomingCallInvite = useCallback(
     async (toUserId?: string) => {
       setIncomingCallInvite(null)
-
+ 
       if (!channel || !isConnected || !toUserId) return
-
+ 
       await channel.send({
         type: 'broadcast',
         event: EVENT_CALL_INVITE_CLEAR_TYPE,
@@ -362,7 +366,7 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     [channel, isConnected]
   )
-
+ 
   const updateMessageLocally = useCallback(
     (messageId: string, updates: Partial<ChatMessage>) => {
       setMessages((current) =>
@@ -375,14 +379,14 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
     },
     []
   )
-
+ 
   const deleteMessageLocally = useCallback(
     (messageId: string) => {
       setMessages((current) => current.filter((msg) => msg.id !== messageId))
     },
     []
   )
-
+ 
   return { 
     messages, 
     sendMessage, 

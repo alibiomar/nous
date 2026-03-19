@@ -230,19 +230,22 @@ export default function AccountPage() {
               )}
 
               <CardFooter className="px-0 flex items-center justify-center gap-4">
+                {pushStatus === 'prompt' && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={async () => {
+                                  await subscribePush();
+                                }}
+                                className="h-11 rounded-2xl px-5"
+                              >
+                                Enable notifications
+                              </Button>
+                            )}
                 <Button type="submit" disabled={isSaving || !name.trim()} className="h-11 rounded-2xl px-5">
                   {isSaving ? 'Saving...' : 'Save changes'}
                 </Button>
-                    {(pushStatus === 'prompt') && (
-                      <Button
-                        type="button"
-                        variant={"outline"}
-                        onClick={() => void subscribePush()}
-                        className="h-11 rounded-2xl px-5"
-                      >
-                        Enable notifications
-                      </Button>
-                    )}
+                    
 
               </CardFooter>
             </form>

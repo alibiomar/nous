@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { Play, Pause } from 'lucide-react';
 import { Button } from './ui/button';
@@ -218,7 +218,9 @@ function GenericEmbedPlayer({
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
 }) {
-  const {sendPushNotification } = usePushNotifications();
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { sendPushNotification } = usePushNotifications();
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -226,16 +228,21 @@ function GenericEmbedPlayer({
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
-
+  const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  };
 
   // Always show toast — works everywhere including Safari, iOS, fullscreen
   const notify = (msg: string) => {
+    showToast(msg);
     if (navigator.vibrate) navigator.vibrate(50);
     // Send real push notification to partner (works when tab is closed/backgrounded)
     void sendPushNotification(msg);
     // Also fire local system notification if tab is hidden and permission granted
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-      try { new Notification('Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
+      try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
     }
   };
 
@@ -252,10 +259,12 @@ function GenericEmbedPlayer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalSyncEvent]);
 
-
+  useEffect(() => {
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
 
   return (
-    <div className="relative w-full bg-background">
+    <div className="relative w-full">
       <iframe
         src={src}
         className={`w-full ${className ?? ''}`}
@@ -265,21 +274,21 @@ function GenericEmbedPlayer({
       />
 
       {/* Sync overlay — floats above the player controls area */}
-      <div className="mt-2 flex items-center gap-2 px-1 flex-wrap">
+      <div className="mt-2 flex items-center gap-2 px-1 flex-wrap bg-transparent">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
         <Button
-        variant={"outline"}
-
-  onClick={() => onPlaybackChange?.('play', 0)}
-          className="flex cursor-pointer items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
+          type="button"
+          onClick={() => onPlaybackChange?.('play', 0)}
+          className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
         >
           <Play className="h-3 w-3" />
           I played
         </Button>
 
-        <Button 
-          variant={"ghost"}
+        <Button
+          type="button"
           onClick={() => onPlaybackChange?.('pause', 0)}
-          className="flex cursor-pointer items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
         >
           <Pause className="h-3 w-3" />
           I paused
@@ -300,6 +309,15 @@ function GenericEmbedPlayer({
         )}
       </div>
 
+      {/* Fixed toast — visible even during fullscreen on Safari/iOS */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-9999 pointer-events-none">
+          <div className="flex items-center gap-2 rounded-full bg-black/80 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-xl">
+            <img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" />
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
