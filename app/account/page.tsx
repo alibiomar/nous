@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { Cake, Mail, User2 } from 'lucide-react';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -21,6 +22,7 @@ export default function AccountPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { status: pushStatus, subscribe: subscribePush, sendPushNotification } = usePushNotifications();
 
   const previewUrl = useMemo(() => {
     if (!selectedFile) return null;
@@ -227,10 +229,21 @@ export default function AccountPage() {
                 </div>
               )}
 
-              <CardFooter className="px-0">
+              <CardFooter className="px-0 flex items-center justify-center gap-4">
                 <Button type="submit" disabled={isSaving || !name.trim()} className="h-11 rounded-2xl px-5">
                   {isSaving ? 'Saving...' : 'Save changes'}
                 </Button>
+                    {(pushStatus === 'prompt') && (
+                      <Button
+                        type="button"
+                        variant={"outline"}
+                        onClick={() => void subscribePush()}
+                        className="h-11 rounded-2xl px-5"
+                      >
+                        Enable notifications
+                      </Button>
+                    )}
+
               </CardFooter>
             </form>
           )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { Play, Pause } from 'lucide-react';
 import { Button } from './ui/button';
@@ -218,8 +218,7 @@ function GenericEmbedPlayer({
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
 }) {
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { status: pushStatus, subscribe: subscribePush, sendPushNotification } = usePushNotifications();
+  const {sendPushNotification } = usePushNotifications();
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -267,17 +266,6 @@ function GenericEmbedPlayer({
 
       {/* Sync overlay — floats above the player controls area */}
       <div className="mt-2 flex items-center gap-2 px-1 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
-        {(pushStatus === 'prompt') && (
-          <button
-            type="button"
-            onClick={() => void subscribePush()}
-            className="text-[10px] text-muted-foreground underline hover:text-foreground transition-colors"
-          >
-            Enable notifications
-          </button>
-        )}
-
         <Button
         variant={"outline"}
 

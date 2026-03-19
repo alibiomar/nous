@@ -273,25 +273,6 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
-
-    // ── Fire push notification to recipient — non-blocking, non-fatal ────────
-    // Uses the same VAPID subscription as cinema sync notifications.
-    // The push goes to all of the recipient's subscribed devices.
-    const senderName = session.name || 'Someone';
-    const pushMessage = content
-      ? `${senderName}: ${String(content).slice(0, 100)}`
-      : `${senderName} sent an image`;
-
-    void fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/notify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Forward cookies so getSession() resolves correctly in the notify route
-        cookie: request.headers.get('cookie') ?? '',
-      },
-      body: JSON.stringify({ message: pushMessage }),
-    }).catch(() => undefined);
-
     return NextResponse.json(
       decryptMessageRecord(message as Record<string, unknown>),
       { status: 201 }
