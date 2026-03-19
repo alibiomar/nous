@@ -395,6 +395,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         toUserId: partnerUserId,
       })
 
+      // Push notification to partner — fires even if their tab is closed
+      void fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `📞 ${user.name} is calling you` }),
+      }).catch(() => undefined)
+
       startCallSession({
         roomName: callRoomName,
         baseRoomName: baseRoomName,

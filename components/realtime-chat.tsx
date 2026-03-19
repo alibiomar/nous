@@ -313,6 +313,17 @@ export const RealtimeChat = ({
         imageUrl: uploadedImageUrl || null,
       })
 
+      // Push notification to partner — client-side, no self-call latency
+      void fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: newMessage.trim()
+            ? `${username}: ${newMessage.trim().slice(0, 100)}`
+            : `${username} sent an image`,
+        }),
+      }).catch(() => undefined)
+
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
       }
