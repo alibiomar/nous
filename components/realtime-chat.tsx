@@ -285,6 +285,7 @@ export const RealtimeChat = ({
       const messageData = {
         content: newMessage || null,
         imageUrl: uploadedImageUrl || null,
+          clientTimestamp: new Date().toISOString(),
       }
 
       // Send to backend for persistence
@@ -307,12 +308,10 @@ export const RealtimeChat = ({
         })
         .catch((err) => console.error('❌ Failed to persist message:', err))
 
-      // Broadcast to partner via realtime — sender's UI is updated via chat:add_message event
-      // which fires after the API call succeeds with the real DB id, avoiding duplicates
+      // Broadcast to partner via realtime + update sender UI immediately
       sendMessage({
         content: newMessage || null,
         imageUrl: uploadedImageUrl || null,
-        skipLocalState: true,
       })
 
       // Push notification to partner — client-side, no self-call latency

@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
     await ensureUserRow(supabase, session);
 
     const body = await request.json();
-    const { content, image_url, imageUrl } = body;
+    const { content, image_url, imageUrl, clientTimestamp } = body;
     const finalImageUrl = image_url || imageUrl || null;
 
     if (!content && !finalImageUrl) {
@@ -266,6 +266,7 @@ export async function POST(request: NextRequest) {
         content: encryptValue(content || null),
         image_url: encryptValue(finalImageUrl),
         read: false,
+        created_at: clientTimestamp ?? new Date().toISOString(),
       })
       .select('*, sender:users!messages_sender_id_fkey(id, name, email, avatar_url)')
       .single();
