@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { Play, Pause } from 'lucide-react';
 
 type PlaybackAction = 'play' | 'pause' | 'seek';
@@ -218,6 +219,7 @@ function GenericEmbedPlayer({
 }) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { status: pushStatus, subscribe: subscribePush, sendPushNotification } = usePushNotifications();
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -234,13 +236,12 @@ function GenericEmbedPlayer({
   // Always show toast — works everywhere including Safari, iOS, fullscreen
   const notify = (msg: string) => {
     showToast(msg);
-    // Also fire system notification on supported browsers if permission granted
-    if (typeof Notification !== 'undefined') {
-      if (Notification.permission === 'granted') {
-        new Notification('🎬 Cinema sync', { body: msg, silent: true });
-      } else if (Notification.permission === 'default') {
-        void Notification.requestPermission();
-      }
+    if (navigator.vibrate) navigator.vibrate(50);
+    // Send real push notification to partner (works when tab is closed/backgrounded)
+    void sendPushNotification(msg);
+    // Also fire local system notification if tab is hidden and permission granted
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+      try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
     }
   };
 
@@ -274,6 +275,15 @@ function GenericEmbedPlayer({
       {/* Sync overlay — floats above the player controls area */}
       <div className="mt-2 flex items-center gap-2 px-1 flex-wrap">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
+        {(pushStatus === 'prompt') && (
+          <button
+            type="button"
+            onClick={() => void subscribePush()}
+            className="text-[10px] text-muted-foreground underline hover:text-foreground transition-colors"
+          >
+            Enable notifications
+          </button>
+        )}
 
         <button
           type="button"
@@ -310,7 +320,7 @@ function GenericEmbedPlayer({
 
       {/* Fixed toast — visible even during fullscreen on Safari/iOS */}
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-9999 pointer-events-none">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="flex items-center gap-2 rounded-full bg-black/80 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-xl">
             <img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" />
             {toast}
