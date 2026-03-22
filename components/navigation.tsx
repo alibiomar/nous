@@ -3,48 +3,23 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Heart, MessageCircle, Music, LogOut, Clapperboard } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
+import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
+
 export function Navigation() {
   const pathname = usePathname();
-  const router = useRouter();
-  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const { hasUnread } = useUnreadMessages();
 
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(`${path}/`);
 
-  const handleLogout = async () => {
-    if (isLoggingOut) return;
-
-    setIsLoggingOut(true);
-
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        cache: 'no-store',
-      });
-    } catch (error) {
-      console.error('Logout request failed:', error);
-    } finally {
-      window.dispatchEvent(new Event('messages:read'));
-      sessionStorage.removeItem('nous:call-session');
-      router.replace('/login');
-      router.refresh();
-      setIsLoggingOut(false);
-    }
-  };
-
   const navItems = [
-    { href: '/feed', icon: <Heart className="w-5 h-5" />, label: 'Moments' },
+    { href: '/feed',     icon: <Heart className="w-5 h-5" />,        label: 'Moments' },
     { href: '/messages', icon: <MessageCircle className="w-5 h-5" />, label: 'Messages', hasUnread },
-    { href: '/music', icon: <Music className="w-5 h-5" />, label: 'Media' },
-    { href: '/cinema', icon: <Clapperboard className="w-5 h-5" />, label: 'Cinema' },
+    { href: '/music',    icon: <Music className="w-5 h-5" />,         label: 'Media' },
+    { href: '/cinema',   icon: <Clapperboard className="w-5 h-5" />,  label: 'Cinema' },
   ];
 
   return (
@@ -80,20 +55,11 @@ export function Navigation() {
           ))}
         </nav>
 
-        <Button
-          onClick={handleLogout}
-          variant="outline"
-          disabled={isLoggingOut}
-          className="mt-auto h-11 rounded-2xl hover:text-primary cursor-pointer border-border/70 bg-background/60 hover:bg-background/80"
-          title="Logout"
-        >
-          <LogOut className="mr-2 h-4 w-4 " />
-          {isLoggingOut ? 'Logging out...' : 'Logout'}
-        </Button>
+        {/* Logout moved to /account page */}
       </aside>
 
       {/* Mobile Top Header */}
-      <header className="fixed inset-x-0 top-0 z-50 md:hidden">
+      <header className="fixed inset-x-0 top-0 z-30 md:hidden">
         <div className="px-3 pt-3">
           <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-3">
             <Link href="/feed" className="flex items-center gap-2" aria-label="Go to feed">
@@ -107,9 +73,9 @@ export function Navigation() {
       </header>
 
       {/* Mobile Bottom Tab Navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 md:hidden">
         <div className="px-3 pb-3">
-          <div className="glass-panel grid grid-cols-5 gap-1 rounded-2xl px-2 py-2">
+          <div className="glass-panel grid grid-cols-4 gap-1 rounded-2xl px-2 py-2">
             {navItems.map((item) => (
               <MobileTabLink
                 key={item.href}
@@ -120,21 +86,9 @@ export function Navigation() {
                 hasUnread={item.hasUnread}
               />
             ))}
-            <button
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="flex min-h-14 flex-col items-center justify-center rounded-xl px-1 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-              aria-label="Logout"
-              title="Logout"
-              type="button"
-            >
-              <LogOut className="h-5 w-5" />
-              <span className="mt-1 text-[11px] leading-none">Logout</span>
-            </button>
           </div>
         </div>
       </nav>
-
     </>
   );
 }
@@ -160,7 +114,7 @@ function DesktopSidebarLink({ href, icon, label, active, hasUnread }: NavLinkPro
       <span className="relative inline-block shrink-0">
         {icon}
         {hasUnread && (
-          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary"></span>
+          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary" />
         )}
       </span>
       <span>{label}</span>
@@ -168,15 +122,7 @@ function DesktopSidebarLink({ href, icon, label, active, hasUnread }: NavLinkPro
   );
 }
 
-interface MobileTabLinkProps {
-  href: string;
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  hasUnread?: boolean;
-}
-
-function MobileTabLink({ href, icon, label, active, hasUnread }: MobileTabLinkProps) {
+function MobileTabLink({ href, icon, label, active, hasUnread }: NavLinkProps) {
   return (
     <Link
       href={href}
@@ -189,7 +135,7 @@ function MobileTabLink({ href, icon, label, active, hasUnread }: MobileTabLinkPr
       <span className="relative inline-block shrink-0">
         {icon}
         {hasUnread && (
-          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary"></span>
+          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary" />
         )}
       </span>
       <span className="mt-1 text-[11px] leading-none">{label}</span>

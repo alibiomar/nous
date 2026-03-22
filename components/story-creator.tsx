@@ -1,20 +1,19 @@
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  useCallback, useEffect, useRef, useState, type PointerEvent,
-} from 'react';
-import {
-  Camera, CameraOff, Check, ChevronRight, Minus, Music,
-  Pen, Plus, RotateCcw, SwitchCamera, Type, Upload, X,
-  Sparkles, AlignCenter, Trash2,
+  Camera, CameraOff, Check, ChevronRight, Music,
+  Pen, RotateCcw, Search, SwitchCamera, Type, Upload, X,
+  Sparkles, AlignCenter, Trash2, Clock, Loader2,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants
+// Types & constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tool   = 'none' | 'draw' | 'text';
-type Panel  = 'none' | 'music' | 'share';
+type Tool  = 'none' | 'draw' | 'text';
+type Panel = 'none' | 'music' | 'share';
 
 const COMPRESS_MAX_WIDTH = 1080;
 const COMPRESS_QUALITY   = 0.82;
@@ -27,40 +26,42 @@ const COLORS = [
 ];
 const BRUSH_SIZES = [3, 6, 12, 20];
 
+interface TextItem {
+  id: string; text: string; color: string; size: number;
+  x: number; y: number; rotate: number; scale: number;
+}
+
+interface YTResult {
+  videoId: string; title: string; channelTitle: string;
+  thumbnail: string; durationSec: number;
+}
+
+interface MusicSelection {
+  videoId:     string;
+  title:       string;
+  channel:     string;
+  thumbnail:   string;
+  startSec:    number; // clip always plays [startSec, startSec+30]
+  durationSec: number; // full song duration
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isYouTubeUrl(url: string) {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '');
-    return host === 'youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com';
-  } catch { return false; }
-}
-
-function extractYouTubeTitle(url: string) {
-  try {
-    const u = new URL(url);
-    const id = u.searchParams.get('v') || u.pathname.split('/').pop();
-    return id ? `YouTube · ${id}` : 'YouTube';
-  } catch { return 'YouTube'; }
-}
-
 async function compressImage(file: File): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const burl = URL.createObjectURL(file);
+  return new Promise(resolve => {
+    const img = new Image(), burl = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(burl);
-      const scale = Math.min(1, COMPRESS_MAX_WIDTH / img.width);
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (!blob) { resolve(file); return; }
-        const c = new File([blob], file.name, { type: 'image/jpeg' });
-        resolve(c.size < file.size ? c : file);
+      const s = Math.min(1, COMPRESS_MAX_WIDTH / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => {
+        if (!b) { resolve(file); return; }
+        const f = new File([b], file.name, { type: 'image/jpeg' });
+        resolve(f.size < file.size ? f : file);
       }, 'image/jpeg', COMPRESS_QUALITY);
     };
     img.onerror = () => { URL.revokeObjectURL(burl); resolve(file); };
@@ -69,34 +70,510 @@ async function compressImage(file: File): Promise<File> {
 }
 
 async function flattenToBlob(
-  mediaEl: HTMLImageElement | HTMLVideoElement,
-  overlayCanvas: HTMLCanvasElement,
-  textItems: TextItem[],
+  media: HTMLImageElement | HTMLVideoElement,
+  overlay: HTMLCanvasElement,
+  items: TextItem[],
 ): Promise<Blob> {
-  const w = overlayCanvas.width, h = overlayCanvas.height;
+  const w = overlay.width, h = overlay.height;
   const out = document.createElement('canvas');
   out.width = w; out.height = h;
   const ctx = out.getContext('2d')!;
-  ctx.drawImage(mediaEl, 0, 0, w, h);
-  ctx.drawImage(overlayCanvas, 0, 0);
-  for (const item of textItems) {
+  ctx.drawImage(media, 0, 0, w, h);
+  ctx.drawImage(overlay, 0, 0);
+  for (const it of items) {
     ctx.save();
-    ctx.font = `bold ${item.size}px sans-serif`;
-    ctx.fillStyle = item.color;
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.lineWidth = 3;
-    ctx.textAlign = 'center';
-    ctx.strokeText(item.text, item.x * w, item.y * h);
-    ctx.fillText(item.text, item.x * w, item.y * h);
+    ctx.translate(it.x * w, it.y * h);
+    ctx.rotate((it.rotate * Math.PI) / 180);
+    ctx.scale(it.scale, it.scale);
+    ctx.font = `bold ${it.size}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3;
+    ctx.strokeText(it.text, 0, 0);
+    ctx.fillStyle = it.color;
+    ctx.fillText(it.text, 0, 0);
     ctx.restore();
   }
   return new Promise((res, rej) =>
-    out.toBlob((b) => b ? res(b) : rej(new Error('empty')), 'image/jpeg', COMPRESS_QUALITY)
+    out.toBlob(b => b ? res(b) : rej(new Error('empty')), 'image/jpeg', COMPRESS_QUALITY)
   );
 }
 
-interface TextItem {
-  id: string; text: string; color: string; size: number; x: number; y: number;
+function dist2(ax: number, ay: number, bx: number, by: number) {
+  return Math.hypot(bx - ax, by - ay);
+}
+function angle2(ax: number, ay: number, bx: number, by: number) {
+  return (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+}
+
+function fmtSec(s: number) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Singleton YouTube player — one persistent DOM node that React never touches.
+// We keep the iframe container in a <div> appended directly to document.body
+// so React's reconciler can never try to removeChild it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Module-level singletons — survive across re-renders / remounts
+let _ytContainer:  HTMLDivElement | null = null;
+let _ytPlayer:     any = null;
+let _ytReady       = false;
+let _ytPendingId:  string | null = null;
+let _ytPendingSec  = 0;
+let _ytCallbacks:  Array<() => void> = [];
+
+function ensureYTContainer() {
+  if (_ytContainer) return;
+  _ytContainer = document.createElement('div');
+  _ytContainer.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-9999px;left:-9999px;';
+  document.body.appendChild(_ytContainer);
+}
+
+function loadYTScript() {
+  if ((window as any).YT?.Player) { return; }
+  if (document.querySelector('script[src*="youtube.com/iframe_api"]')) return;
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+}
+
+function onYTReady(cb: () => void) {
+  if (_ytReady) { cb(); return; }
+  _ytCallbacks.push(cb);
+}
+
+if (typeof window !== 'undefined') {
+  const prev = (window as any).onYouTubeIframeAPIReady;
+  (window as any).onYouTubeIframeAPIReady = () => {
+    prev?.();
+    _ytReady = true;
+    _ytCallbacks.forEach(fn => fn());
+    _ytCallbacks = [];
+  };
+}
+
+function ytLoad(videoId: string, startSec: number) {
+  _ytPendingId  = videoId;
+  _ytPendingSec = startSec;
+
+  ensureYTContainer();
+  loadYTScript();
+
+  const doLoad = () => {
+    if (!_ytContainer) return;
+    if (_ytPlayer) {
+      // Reuse the existing player — just load a new video
+      try {
+        _ytPlayer.loadVideoById({ videoId, startSeconds: startSec });
+      } catch { /* player not ready yet — pending vars already set */ }
+    } else {
+      // Create inner div that YT API will replace with an iframe
+      const div = document.createElement('div');
+      _ytContainer.appendChild(div);
+      _ytPlayer = new (window as any).YT.Player(div, {
+        videoId,
+        playerVars: { autoplay: 1, start: Math.floor(startSec), controls: 0, modestbranding: 1, rel: 0, playsinline: 1 },
+        events: {
+          onReady(e: any) {
+            e.target.seekTo(_ytPendingSec, true);
+            e.target.playVideo();
+          },
+        },
+      });
+    }
+  };
+
+  onYTReady(doLoad);
+}
+
+function ytSeek(startSec: number) {
+  _ytPendingSec = startSec;
+  try {
+    _ytPlayer?.seekTo(startSec, true);
+    _ytPlayer?.playVideo();
+  } catch {}
+}
+
+function ytStop() {
+  try { _ytPlayer?.pauseVideo(); } catch {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MusicPanel — search + result cards + locked-30s window picker + preview
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MusicPanel({
+  selection, onConfirm, onClear, onClose,
+}: {
+  selection: MusicSelection | null;
+  onConfirm: (s: MusicSelection) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery]         = useState('');
+  const [results, setResults]     = useState<YTResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState('');
+  const [picked, setPicked]       = useState<YTResult | null>(null);
+  const [startSec, setStartSec]   = useState(0);
+  const [previewing, setPreviewing] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Stop preview when panel unmounts
+  useEffect(() => () => { ytStop(); }, []);
+
+  // Pre-fill existing selection
+  useEffect(() => {
+    if (selection) {
+      setPicked({ videoId: selection.videoId, title: selection.title, channelTitle: selection.channel, thumbnail: selection.thumbnail, durationSec: selection.durationSec });
+      setStartSec(selection.startSec);
+    }
+  }, []); // eslint-disable-line
+
+  // Debounced search
+  const handleQueryChange = (val: string) => {
+    setQuery(val); setSearchErr('');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!val.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res  = await fetch(`/api/youtube/search?q=${encodeURIComponent(val.trim())}`);
+        const data = await res.json();
+        if (!res.ok) { setSearchErr(data.error ?? 'Search failed'); setResults([]); }
+        else setResults(Array.isArray(data) ? data : []);
+      } catch { setSearchErr('Search failed'); }
+      finally { setSearching(false); }
+    }, 500);
+  };
+
+  const selectVideo = (v: YTResult) => {
+    setPicked(v); setStartSec(0); setResults([]); setQuery('');
+    setPreviewing(false); ytStop();
+  };
+
+  const confirm = () => {
+    if (!picked) return;
+    onConfirm({ videoId: picked.videoId, title: picked.title, channel: picked.channelTitle, thumbnail: picked.thumbnail, startSec, durationSec: picked.durationSec });
+  };
+
+  const dur      = picked?.durationSec ?? 0;
+  // Max start so the 30s window fits: if song shorter than 30s, lock to 0
+  const maxStart = Math.max(0, dur - 30);
+  const endSec   = Math.min(startSec + 30, dur > 0 ? dur : startSec + 30);
+  // Window width as % of total bar
+  const windowPct = dur > 0 ? (30 / dur) * 100 : 100;
+  const startPct  = dur > 0 ? (startSec / dur) * 100 : 0;
+
+  return (
+    <div className="space-y-4 relative">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-border/60 bg-primary/10 p-2">
+            <Music className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Add Music</p>
+            <p className="text-xs text-muted-foreground">Search any song or artist</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose}
+          className="rounded-full p-1.5 text-muted-foreground hover:bg-muted/60 transition-colors">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Search input */}
+      {!picked && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input autoFocus value={query} onChange={e => handleQueryChange(e.target.value)}
+            placeholder="Song name, artist, lyrics…"
+            className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors" />
+          {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />}
+        </div>
+      )}
+
+      {searchErr && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{searchErr}</p>}
+
+      {/* Results list */}
+      {results.length > 0 && !picked && (
+        <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5" style={{ scrollbarWidth: 'thin' }}>
+          {results.map(v => (
+            <button key={v.videoId} type="button" onClick={() => selectVideo(v)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-border/60 bg-background/50 p-2.5 text-left hover:bg-muted/40 transition-colors">
+              {v.thumbnail
+                ? <img src={v.thumbnail} alt="" className="h-11 w-18 rounded-xl object-cover shrink-0" />
+                : <div className="h-11 w-18 rounded-xl bg-muted/60 flex items-center justify-center shrink-0"><Music className="h-4 w-4 text-muted-foreground" /></div>
+              }
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground line-clamp-1">{v.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{v.channelTitle}</p>
+                {v.durationSec > 0 && <p className="text-[11px] text-muted-foreground/60 mt-0.5">{fmtSec(v.durationSec)}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Picked: card + 30s window slider */}
+      {picked && (
+        <div className="space-y-4">
+          {/* Selected card */}
+          <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/8 p-2.5">
+            {picked.thumbnail
+              ? <img src={picked.thumbnail} alt="" className="h-11 w-18 rounded-xl object-cover shrink-0" />
+              : <div className="h-11 w-18 rounded-xl bg-muted/60 flex items-center justify-center shrink-0"><Music className="h-5 w-5 text-muted-foreground" /></div>
+            }
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground line-clamp-1">{picked.title}</p>
+              <p className="text-xs text-muted-foreground line-clamp-1">{picked.channelTitle}</p>
+              {picked.durationSec > 0 && <p className="text-[11px] text-muted-foreground/60">{fmtSec(picked.durationSec)}</p>}
+            </div>
+            <button type="button" onClick={() => { setPicked(null); setStartSec(0); setPreviewing(false); ytStop(); }}
+              className="rounded-full p-1.5 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* 30-second window picker */}
+          <div className="rounded-2xl border border-border/60 bg-background/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs font-semibold text-foreground">30s clip window</p>
+              </div>
+              <span className="text-xs font-medium tabular-nums text-foreground">
+                {fmtSec(startSec)} – {fmtSec(endSec)}
+              </span>
+            </div>
+
+            {/* Visual timeline bar */}
+            <div className="relative h-5 flex items-center">
+              {/* Full track */}
+              <div className="absolute inset-x-0 h-1.5 rounded-full bg-muted/60" />
+              {/* 30s window highlight */}
+              <div
+                className="absolute h-1.5 rounded-full bg-primary/70"
+                style={{ left: `${startPct}%`, width: `${Math.min(windowPct, 100 - startPct)}%` }}
+              />
+              {/* Start tick */}
+              <div
+                className="absolute w-3 h-3 rounded-full bg-primary border-2 border-background shadow -translate-x-1/2 cursor-pointer"
+                style={{ left: `${startPct}%` }}
+              />
+              {/* End tick (read-only) */}
+              <div
+                className="absolute w-2.5 h-2.5 rounded-full bg-primary/50 border-2 border-background shadow -translate-x-1/2"
+                style={{ left: `${Math.min(startPct + windowPct, 100)}%` }}
+              />
+            </div>
+
+            {/* Slider — only moves start; end = start+30 always */}
+            <input
+              type="range"
+              min={0}
+              max={maxStart}
+              step={1}
+              value={startSec}
+              onChange={e => {
+                const v = +e.target.value;
+                setStartSec(v);
+                if (previewing && picked) ytSeek(v);
+              }}
+              className="w-full accent-primary h-1 cursor-pointer"
+              disabled={maxStart === 0}
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground/55">
+              <span>0:00</span>
+              <span className="text-muted-foreground/70 font-medium">Drag to choose start ·  end auto-locks at +30s</span>
+              <span>{dur > 0 ? fmtSec(dur) : '?'}</span>
+            </div>
+
+            {/* Preview toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!picked) return;
+                if (previewing) {
+                  ytStop();
+                  setPreviewing(false);
+                } else {
+                  ytLoad(picked.videoId, startSec);
+                  setPreviewing(true);
+                }
+              }}
+              className={[
+                'flex items-center gap-2 w-full justify-center rounded-xl border py-2 text-xs font-medium transition-colors',
+                previewing
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border/60 bg-background/40 text-muted-foreground hover:bg-muted/40',
+              ].join(' ')}
+            >
+              <Music className={['h-3.5 w-3.5', previewing ? 'animate-pulse' : ''].join(' ')} />
+              {previewing ? `Previewing from ${fmtSec(startSec)}…` : 'Preview this clip'}
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            {selection && (
+              <button type="button" onClick={onClear}
+                className="flex-1 rounded-2xl border border-border/70 bg-background/50 px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
+                Remove
+              </button>
+            )}
+            <Button onClick={confirm} className={`rounded-2xl h-11 gap-1.5 ${selection ? 'flex-1' : 'w-full'}`}>
+              <Music className="h-4 w-4" />
+              {selection ? 'Update' : 'Add to story'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Empty hint */}
+      {!picked && results.length === 0 && !searching && !searchErr && (
+        <div className="text-center py-6">
+          <Music className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+          <p className="text-xs text-muted-foreground/50">Search for a song to add to your story</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TextLabel — drag (PC pointer) + pinch/rotate (touch)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TextLabelProps {
+  item: TextItem;
+  stageRef: React.RefObject<HTMLDivElement | null>;
+  active: boolean;
+  onActivate: (id: string) => void;
+  onDeactivate: () => void;
+  onChange: (id: string, patch: Partial<TextItem>) => void;
+}
+
+function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange }: TextLabelProps) {
+  const elRef = useRef<HTMLSpanElement | null>(null);
+
+  // PC / stylus: pointer events via React
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
+    if (e.pointerType === 'touch') return;
+    e.preventDefault(); e.stopPropagation();
+    onActivate(item.id);
+    const stage = stageRef.current; if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const snapX = item.x, snapY = item.y;
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = (ev: globalThis.PointerEvent) => {
+      onChange(item.id, {
+        x: Math.max(0, Math.min(1, snapX + (ev.clientX - sx) / rect.width)),
+        y: Math.max(0, Math.min(1, snapY + (ev.clientY - sy) / rect.height)),
+      });
+    };
+    const onUp = () => {
+      onDeactivate();
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [item.id, item.x, item.y, onChange, onActivate, onDeactivate, stageRef]);
+
+  // Mobile: native touch for single-drag + pinch/rotate
+  useEffect(() => {
+    const el = elRef.current; const stage = stageRef.current;
+    if (!el || !stage) return;
+
+    let snapX = 0, snapY = 0, snapScale = 1, snapRot = 0;
+    let snapDist = 1, snapAng = 0, snapCX = 0, snapCY = 0;
+
+    const rect = () => stage.getBoundingClientRect();
+
+    const onStart = (e: TouchEvent) => {
+      e.stopPropagation();
+      onActivate(item.id);
+      snapX = item.x; snapY = item.y;
+      snapScale = item.scale; snapRot = item.rotate;
+      if (e.touches.length >= 2) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        snapDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
+        snapAng  = angle2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
+        snapCX   = (t0.clientX + t1.clientX) / 2;
+        snapCY   = (t0.clientY + t1.clientY) / 2;
+      } else {
+        snapCX = e.touches[0].clientX;
+        snapCY = e.touches[0].clientY;
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      const r = rect();
+      if (e.touches.length >= 2) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const curDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
+        const curAng  = angle2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
+        const curCX   = (t0.clientX + t1.clientX) / 2;
+        const curCY   = (t0.clientY + t1.clientY) / 2;
+        onChange(item.id, {
+          scale:  Math.max(0.3, Math.min(5, snapScale * (curDist / snapDist))),
+          rotate: snapRot + (curAng - snapAng),
+          x: Math.max(0, Math.min(1, snapX + (curCX - snapCX) / r.width)),
+          y: Math.max(0, Math.min(1, snapY + (curCY - snapCY) / r.height)),
+        });
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        onChange(item.id, {
+          x: Math.max(0, Math.min(1, snapX + (t.clientX - snapCX) / r.width)),
+          y: Math.max(0, Math.min(1, snapY + (t.clientY - snapCY) / r.height)),
+        });
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      e.stopPropagation();
+      if (e.touches.length === 0) onDeactivate();
+      if (e.touches.length === 1) {
+        snapCX = e.touches[0].clientX; snapCY = e.touches[0].clientY;
+        snapX = item.x; snapY = item.y;
+      }
+    };
+
+    el.addEventListener('touchstart',  onStart, { passive: false });
+    el.addEventListener('touchmove',   onMove,  { passive: false });
+    el.addEventListener('touchend',    onEnd,   { passive: false });
+    el.addEventListener('touchcancel', onEnd,   { passive: false });
+    return () => {
+      el.removeEventListener('touchstart',  onStart);
+      el.removeEventListener('touchmove',   onMove);
+      el.removeEventListener('touchend',    onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, [item.id, item.x, item.y, item.scale, item.rotate, onActivate, onDeactivate, onChange, stageRef]);
+
+  return (
+    <span
+      ref={elRef}
+      onPointerDown={onPointerDown}
+      style={{
+        position: 'absolute', zIndex: 15,
+        left: `${item.x * 100}%`, top: `${item.y * 100}%`,
+        transform: `translate(-50%,-50%) rotate(${item.rotate}deg) scale(${item.scale})`,
+        color: item.color, fontSize: item.size, fontWeight: 700,
+        textShadow: '0 2px 10px rgba(0,0,0,0.65)',
+        touchAction: 'none', userSelect: 'none', cursor: 'grab', willChange: 'transform',
+        outline: active ? '2px solid rgba(255,255,255,0.55)' : 'none',
+        outlineOffset: '6px', borderRadius: 4, whiteSpace: 'nowrap',
+      }}
+    >{item.text}</span>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,18 +587,19 @@ export interface StoryCreatorProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Component
+// Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
-  // Media
+
+  // ── Media ──────────────────────────────────────────────────────────────────
   const [mediaFile, setMediaFile]         = useState<File | null>(null);
   const [mediaPreview, setMediaPreview]   = useState<string | null>(null);
   const [mediaKind, setMediaKind]         = useState<'image' | 'video'>('image');
   const [videoDuration, setVideoDuration] = useState(0);
   const [startOffset, setStartOffset]     = useState(0);
 
-  // Camera
+  // ── Camera ─────────────────────────────────────────────────────────────────
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('environment');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -130,33 +608,51 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
   const recordChunks   = useRef<Blob[]>([]);
 
-  // Tools
+  // ── Tools ──────────────────────────────────────────────────────────────────
   const [tool, setTool]             = useState<Tool>('none');
   const [color, setColor]           = useState('#ffffff');
   const [brushSize, setBrushSize]   = useState(6);
   const [textItems, setTextItems]   = useState<TextItem[]>([]);
   const [activeText, setActiveText] = useState('');
   const [textSize, setTextSize]     = useState(32);
-  const [isDragging, setIsDragging] = useState<string | null>(null);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
-  // Canvas
+  // ── Canvas ─────────────────────────────────────────────────────────────────
   const canvasRef  = useRef<HTMLCanvasElement | null>(null);
   const editImgRef = useRef<HTMLImageElement | null>(null);
   const editVidRef = useRef<HTMLVideoElement | null>(null);
-  const isDrawing  = useRef(false);
-  const lastPt     = useRef({ x: 0, y: 0 });
   const stageRef   = useRef<HTMLDivElement | null>(null);
   const undoStack  = useRef<ImageData[]>([]);
+  const isDrawing  = useRef(false);
+  const lastPt     = useRef({ x: 0, y: 0 });
+  const ptBuf      = useRef<{ x: number; y: number }[]>([]);
 
-  // Panels & share
-  const [panel, setPanel]               = useState<Panel>('none');
-  const [youtubeUrl, setYoutubeUrl]     = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState('');
-  const [youtubeError, setYoutubeError] = useState('');
-  const [caption, setCaption]           = useState('');
-  const [isPosting, setIsPosting]       = useState(false);
-  const [uploadStep, setUploadStep]     = useState('');
-  const [postError, setPostError]       = useState('');
+  const colorRef     = useRef(color);
+  const brushSizeRef = useRef(brushSize);
+  const toolRef      = useRef(tool);
+  useEffect(() => { colorRef.current = color; },         [color]);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+  useEffect(() => { toolRef.current = tool; },           [tool]);
+
+  // ── Music ──────────────────────────────────────────────────────────────────
+  const [musicSelection, setMusicSelection] = useState<MusicSelection | null>(null);
+  // ── Panels & share ─────────────────────────────────────────────────────────
+  const [panel, setPanel]           = useState<Panel>('none');
+  const [caption, setCaption]       = useState('');
+  const [isPosting, setIsPosting]   = useState(false);
+  const [uploadStep, setUploadStep] = useState('');
+  const [postError, setPostError]   = useState('');
+  // Autoplay: start/stop based on selection + panel visibility
+  useEffect(() => {
+    if (musicSelection && panel === 'none' && mediaPreview) {
+      ytLoad(musicSelection.videoId, musicSelection.startSec);
+    } else {
+      ytStop();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musicSelection?.videoId, musicSelection?.startSec, panel, mediaPreview]);
+
+
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -173,9 +669,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaFile(null); setMediaPreview(null); setMediaKind('image');
     setVideoDuration(0); setStartOffset(0);
-    setTool('none'); setTextItems([]); setActiveText('');
-    setPanel('none');
-    setYoutubeUrl(''); setYoutubeTitle(''); setYoutubeError('');
+    setTool('none'); setTextItems([]); setActiveText(''); setActiveItemId(null);
+    setPanel('none'); setMusicSelection(null); ytStop();
     setCaption(''); setIsPosting(false); setUploadStep(''); setPostError('');
     undoStack.current = [];
   }, [mediaPreview, cameraStream]);
@@ -203,8 +698,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, [cameraFacing]);
 
   const flipCamera = useCallback(() => {
-    stopCamera();
-    setCameraFacing(f => f === 'user' ? 'environment' : 'user');
+    stopCamera(); setCameraFacing(f => f === 'user' ? 'environment' : 'user');
   }, [stopCamera]);
 
   useEffect(() => { if (cameraActive) startCamera(); }, [cameraFacing]);
@@ -242,14 +736,11 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   // ── Load media ─────────────────────────────────────────────────────────────
   const loadMedia = useCallback((file: File) => {
     if (file.type.startsWith('image/')) {
-      setMediaKind('image');
-      setMediaPreview(URL.createObjectURL(file));
-      setMediaFile(file);
+      setMediaKind('image'); setMediaPreview(URL.createObjectURL(file)); setMediaFile(file);
     } else if (file.type.startsWith('video/')) {
       setMediaKind('video');
       const url = URL.createObjectURL(file);
-      const vid = document.createElement('video');
-      vid.src = url;
+      const vid = document.createElement('video'); vid.src = url;
       vid.onloadedmetadata = () => {
         setVideoDuration(vid.duration); setStartOffset(0);
         setMediaPreview(url); setMediaFile(file);
@@ -266,75 +757,85 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
 
   useEffect(() => { if (mediaPreview) setTimeout(initCanvas, 50); }, [mediaPreview, initCanvas]);
 
-  const getCanvasPt = (e: PointerEvent<HTMLCanvasElement>) => {
-    const r = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  };
+  // Smooth drawing via native pointer events
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas || !mediaPreview) return;
+    const ctx = canvas.getContext('2d')!;
+    const pt = (e: globalThis.PointerEvent) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onDown = (e: globalThis.PointerEvent) => {
+      if (toolRef.current !== 'draw') return;
+      e.preventDefault(); isDrawing.current = true;
+      const p = pt(e); lastPt.current = p; ptBuf.current = [p];
+      canvas.setPointerCapture(e.pointerId);
+      ctx.beginPath(); ctx.arc(p.x, p.y, brushSizeRef.current / 2, 0, Math.PI * 2);
+      ctx.fillStyle = colorRef.current; ctx.fill();
+    };
+    const onMove = (e: globalThis.PointerEvent) => {
+      if (!isDrawing.current || toolRef.current !== 'draw') return;
+      e.preventDefault();
+      const p = pt(e); ptBuf.current.push(p);
+      if (ptBuf.current.length > 3) ptBuf.current.shift();
+      ctx.beginPath(); ctx.strokeStyle = colorRef.current; ctx.lineWidth = brushSizeRef.current;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.moveTo(lastPt.current.x, lastPt.current.y);
+      const buf = ptBuf.current;
+      if (buf.length >= 2) {
+        const mid = { x: (buf[buf.length-2].x + buf[buf.length-1].x)/2, y: (buf[buf.length-2].y + buf[buf.length-1].y)/2 };
+        ctx.quadraticCurveTo(lastPt.current.x, lastPt.current.y, mid.x, mid.y);
+        lastPt.current = mid;
+      } else { ctx.lineTo(p.x, p.y); lastPt.current = p; }
+      ctx.stroke();
+    };
+    const onUp = (e: globalThis.PointerEvent) => {
+      if (!isDrawing.current) return; e.preventDefault();
+      isDrawing.current = false; ptBuf.current = [];
+    };
+    canvas.addEventListener('pointerdown',   onDown, { passive: false });
+    canvas.addEventListener('pointermove',   onMove, { passive: false });
+    canvas.addEventListener('pointerup',     onUp,   { passive: false });
+    canvas.addEventListener('pointercancel', onUp,   { passive: false });
+    return () => {
+      canvas.removeEventListener('pointerdown',   onDown);
+      canvas.removeEventListener('pointermove',   onMove);
+      canvas.removeEventListener('pointerup',     onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+    };
+  }, [mediaPreview]);
 
-  const pushUndo = () => {
-    const c = canvasRef.current; if (!c) return;
-    const ctx = c.getContext('2d')!;
-    undoStack.current.push(ctx.getImageData(0, 0, c.width, c.height));
-    if (undoStack.current.length > 20) undoStack.current.shift();
-  };
+  // Undo snapshot capture
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas || !mediaPreview) return;
+    const onDown = () => {
+      if (toolRef.current !== 'draw') return;
+      const ctx = canvas.getContext('2d')!;
+      undoStack.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      if (undoStack.current.length > 20) undoStack.current.shift();
+    };
+    canvas.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    return () => canvas.removeEventListener('pointerdown', onDown, { capture: true });
+  }, [mediaPreview]);
 
-  const undo = () => {
+  const undo = useCallback(() => {
     const c = canvasRef.current;
     if (!c || !undoStack.current.length) return;
     c.getContext('2d')!.putImageData(undoStack.current.pop()!, 0, 0);
-  };
-
-  const onPointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (tool !== 'draw') return;
-    pushUndo(); isDrawing.current = true; lastPt.current = getCanvasPt(e);
-    (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing.current || tool !== 'draw') return;
-    const c = canvasRef.current; if (!c) return;
-    const ctx = c.getContext('2d')!, pt = getCanvasPt(e);
-    ctx.beginPath(); ctx.moveTo(lastPt.current.x, lastPt.current.y); ctx.lineTo(pt.x, pt.y);
-    ctx.strokeStyle = color; ctx.lineWidth = brushSize; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-    lastPt.current = pt;
-  };
-  const onPointerUp = () => { isDrawing.current = false; };
+  }, []);
 
   // ── Text ───────────────────────────────────────────────────────────────────
-  const addText = () => {
+  const addText = useCallback(() => {
     if (!activeText.trim()) return;
-    setTextItems(p => [...p, { id: crypto.randomUUID(), text: activeText.trim(), color, size: textSize, x: 0.5, y: 0.45 }]);
+    setTextItems(p => [...p, { id: crypto.randomUUID(), text: activeText.trim(), color, size: textSize, x: 0.5, y: 0.45, rotate: 0, scale: 1 }]);
     setActiveText(''); setTool('none');
-  };
+  }, [activeText, color, textSize]);
 
-  const dragText = (id: string, e: PointerEvent<HTMLSpanElement>) => {
-    const zone = stageRef.current; if (!zone) return;
-    setIsDragging(id);
-    const rect = zone.getBoundingClientRect();
-    const onMove = (ev: globalThis.PointerEvent) => {
-      setTextItems(prev => prev.map(t => t.id !== id ? t : {
-        ...t,
-        x: Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)),
-        y: Math.max(0, Math.min(1, (ev.clientY - rect.top)  / rect.height)),
-      }));
-    };
-    const onUp = () => {
-      setIsDragging(null);
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
+  const handleTextChange = useCallback((id: string, patch: Partial<TextItem>) => {
+    setTextItems(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  }, []);
 
-  // ── Music confirm ──────────────────────────────────────────────────────────
-  const confirmMusic = () => {
-    const url = youtubeUrl.trim();
-    if (!url) { setYoutubeTitle(''); setPanel('none'); return; }
-    if (!isYouTubeUrl(url)) { setYoutubeError('Invalid YouTube URL'); return; }
-    setYoutubeError(''); setYoutubeTitle(extractYouTubeTitle(url)); setPanel('none');
-  };
-
-  // ── Upload / Post ──────────────────────────────────────────────────────────
+  // ── Post ───────────────────────────────────────────────────────────────────
   const uploadFile = async (file: File, startOff = 0) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -380,8 +881,10 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
           video_url: videoUrl, video_public_id: videoPublicId,
           media_type: videoUrl ? 'video' : 'image',
           caption: caption.trim() || null,
-          youtube_url: youtubeUrl.trim() || null,
-          youtube_title: youtubeTitle || null,
+          youtube_video_id:  musicSelection?.videoId  ?? null,
+          youtube_title:     musicSelection?.title    ?? null,
+          youtube_start_sec: musicSelection?.startSec ?? null,
+          youtube_end_sec:   musicSelection ? musicSelection.startSec + 30 : null,
         }),
       });
       if (!res.ok) { const d = await res.json().catch(() => null); setPostError(d?.error || 'Failed'); return; }
@@ -390,488 +893,339 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     finally { setIsPosting(false); setUploadStep(''); }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
   if (!open) return null;
 
-  const hasMedia = !!mediaPreview;
-  const maxStart = Math.max(0, videoDuration - MAX_VIDEO_DURATION);
-  const endOffset = Math.min(startOffset + MAX_VIDEO_DURATION, videoDuration);
-  const hasDrawings = undoStack.current.length > 0 || textItems.length > 0;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // CSS
-  // ─────────────────────────────────────────────────────────────────────────
-  const css = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
-    .sc * { font-family: 'DM Sans', -apple-system, sans-serif; box-sizing: border-box; }
-    .sc {
-      position: fixed; inset: 0; z-index: 200; background: #000; overflow: hidden;
-      transform: translateY(${visible ? '0' : '100%'});
-      opacity: ${visible ? 1 : 0};
-      transition: transform 0.42s cubic-bezier(0.32,0.72,0,1), opacity 0.24s ease;
-    }
-    .gbtn {
-      width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
-      background: rgba(0,0,0,0.4); backdrop-filter: blur(16px) saturate(180%);
-      border: 1px solid rgba(255,255,255,0.15);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; color: white;
-      transition: background 0.15s, transform 0.12s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .gbtn:active { transform: scale(0.88); }
-    .gbtn.on { background: rgba(255,255,255,0.93); color: #000; }
-    .gbtn.sm { width: 36px; height: 36px; }
-    .cdot {
-      border-radius: 50%; cursor: pointer; flex-shrink: 0;
-      transition: transform 0.14s, box-shadow 0.14s;
-    }
-    .cdot.sel { transform: scale(1.3); box-shadow: 0 0 0 2.5px rgba(255,255,255,0.9); }
-    .cdot:not(.sel) { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.18); }
-    .pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      background: rgba(255,255,255,0.93); color: #000;
-      font-size: 14px; font-weight: 700; letter-spacing: -0.2px;
-      padding: 9px 18px; border-radius: 100px; cursor: pointer;
-      border: none; -webkit-tap-highlight-color: transparent;
-      transition: transform 0.12s;
-    }
-    .pill:active { transform: scale(0.94); }
-    .panel {
-      position: absolute; left: 0; right: 0; bottom: 0;
-      border-radius: 24px 24px 0 0;
-      background: rgba(12,12,12,0.94);
-      backdrop-filter: blur(36px) saturate(200%);
-      border-top: 1px solid rgba(255,255,255,0.08);
-      z-index: 50; padding: 0 20px 44px;
-      transition: transform 0.38s cubic-bezier(0.32,0.72,0,1);
-    }
-    .panel.open  { transform: translateY(0); }
-    .panel.shut  { transform: translateY(110%); }
-    .handle { width: 38px; height: 4px; border-radius: 99px; background: rgba(255,255,255,0.18); margin: 14px auto 22px; cursor: pointer; }
-    .field {
-      width: 100%; background: rgba(255,255,255,0.07);
-      border: 1.5px solid rgba(255,255,255,0.11);
-      border-radius: 14px; padding: 13px 16px;
-      font-size: 14px; color: white; outline: none;
-      font-family: 'DM Sans', sans-serif; resize: none;
-      transition: border-color 0.2s;
-    }
-    .field::placeholder { color: rgba(255,255,255,0.28); }
-    .field:focus { border-color: rgba(255,255,255,0.32); }
-    .share-btn {
-      width: 100%; height: 52px; border-radius: 16px; border: none;
-      background: linear-gradient(135deg, #FF385C 0%, #FF6B35 100%);
-      color: white; font-size: 16px; font-weight: 700; letter-spacing: -0.3px;
-      display: flex; align-items: center; justify-content: center; gap: 9px;
-      cursor: pointer; box-shadow: 0 6px 28px rgba(255,56,92,0.45);
-      transition: opacity 0.15s, transform 0.12s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .share-btn:active { transform: scale(0.98); }
-    .share-btn:disabled { opacity: 0.65; }
-    .conf-btn {
-      width: 100%; border: 1px solid rgba(255,255,255,0.12); border-radius: 13px;
-      background: rgba(255,255,255,0.08); padding: 13px;
-      font-size: 14px; font-weight: 600; color: white;
-      cursor: pointer; transition: background 0.15s, transform 0.12s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .conf-btn:active { background: rgba(255,255,255,0.13); transform: scale(0.98); }
-    .scrub {
-      -webkit-appearance: none; appearance: none;
-      width: 100%; height: 3px; border-radius: 99px;
-      background: rgba(255,255,255,0.2); outline: none; cursor: pointer;
-    }
-    .scrub::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 18px; height: 18px; border-radius: 50%; background: white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    }
-    .pick-row {
-      display: flex; align-items: center; gap: 14px;
-      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09);
-      border-radius: 18px; padding: 17px 18px; cursor: pointer;
-      width: 100%; transition: background 0.18s, transform 0.12s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .pick-row:active { background: rgba(255,255,255,0.1); transform: scale(0.98); }
-    .shutter {
-      width: 72px; height: 72px; border-radius: 50%;
-      border: 4px solid rgba(255,255,255,0.85);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: transform 0.14s;
-      background: rgba(255,255,255,0.14); backdrop-filter: blur(8px);
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.1), 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .shutter:active { transform: scale(0.91); }
-    .shutter.rec { animation: rp 1.2s ease infinite; }
-    @keyframes rp {
-      0%,100% { box-shadow: 0 0 0 0 rgba(255,56,92,0.5), 0 8px 32px rgba(0,0,0,0.4); }
-      50%      { box-shadow: 0 0 0 16px rgba(255,56,92,0), 0 8px 32px rgba(0,0,0,0.4); }
-    }
-    .rec-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      background: rgba(255,56,92,0.85); backdrop-filter: blur(8px);
-      padding: 5px 11px; border-radius: 100px;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: white;
-    }
-    .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: white; animation: rd 1s ease infinite; }
-    @keyframes rd { 0%,100%{opacity:1} 50%{opacity:0.2} }
-    .bdot {
-      border-radius: 50%; border: 2px solid rgba(255,255,255,0.25);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; flex-shrink: 0; transition: border-color 0.14s;
-    }
-    .bdot.on { border-color: rgba(255,255,255,0.9); }
-    .err { background: rgba(255,56,92,0.13); border: 1px solid rgba(255,56,92,0.25); border-radius: 12px; padding: 10px 14px; font-size: 12px; color: #FF8FA3; }
-    .spinner { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; border: 2.5px solid rgba(255,255,255,0.25); border-top-color: white; animation: sp 0.65s linear infinite; }
-    @keyframes sp { to { transform: rotate(360deg); } }
-    .sz-btn { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.14s; }
-    .sz-btn:active { background: rgba(255,255,255,0.2); }
-  `;
+  const hasMedia   = !!mediaPreview;
+  const maxStart   = Math.max(0, videoDuration - MAX_VIDEO_DURATION);
+  const endOffset  = Math.min(startOffset + MAX_VIDEO_DURATION, videoDuration);
+  const hasEdits   = undoStack.current.length > 0 || textItems.length > 0;
+  const inToolMode = tool === 'draw' || tool === 'text';
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <>
-      <style>{css}</style>
-      <div className="sc">
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* PICK SCREEN                                                       */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {!hasMedia && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'radial-gradient(ellipse 80% 60% at 50% 36%, #191919 0%, #060606 100%)' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '52px 16px 0' }}>
-              <button type="button" onClick={onClose} className="gbtn"><X size={18} /></button>
-              <span style={{ fontSize: 17, fontWeight: 700, color: 'white', letterSpacing: '-0.4px' }}>New Story</span>
-              <div style={{ width: 42 }} />
-            </div>
-
-            {/* Camera area */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', margin: '20px 0 0' }}>
-              {cameraActive ? (
-                <>
-                  <video ref={cameraVideoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay playsInline muted />
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 55%)' }} />
-                  {isRecording && (
-                    <div style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)' }}>
-                      <div className="rec-pill"><div className="rec-dot" />REC</div>
-                    </div>
-                  )}
-                  <button type="button" onClick={flipCamera} className="gbtn" style={{ position: 'absolute', top: 16, right: 16 }}><SwitchCamera size={18} /></button>
-                </>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <div style={{ width: 88, height: 88, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Camera size={36} color="rgba(255,255,255,0.2)" />
-                  </div>
-                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.22)' }}>Camera preview</span>
-                </div>
-              )}
-            </div>
-
-            {/* Controls */}
-            <div style={{ padding: '20px 24px 48px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {cameraActive ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28 }}>
-                  <button type="button" onClick={stopCamera} className="gbtn"><CameraOff size={18} /></button>
-                  <div
-                    className={`shutter${isRecording ? ' rec' : ''}`}
-                    onPointerDown={() => { if (!isRecording) startRecording(); }}
-                    onPointerUp={() => { if (isRecording) stopRecording(); }}
-                    onClick={capturePhoto}
-                  >
-                    {isRecording
-                      ? <div style={{ width: 22, height: 22, borderRadius: 6, background: '#FF385C' }} />
-                      : <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(255,255,255,0.9)' }} />
-                    }
-                  </div>
-                  <div style={{ width: 42 }} />
-                </div>
-              ) : (
-                <>
-                  <button type="button" onClick={startCamera} className="pick-row" style={{ justifyContent: 'center', gap: 10 }}>
-                    <Camera size={18} color="rgba(255,255,255,0.75)" />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Open Camera</span>
-                  </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)' }}>or</span>
-                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
-                  </div>
-                  <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) loadMedia(f); }} />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="pick-row">
-                    <div style={{ width: 44, height: 44, borderRadius: 13, background: 'linear-gradient(135deg,#FF385C,#FF6B35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Upload size={20} color="white" />
-                    </div>
-                    <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>Choose from library</div>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)', marginTop: 2 }}>Photo or video</div>
-                    </div>
-                    <ChevronRight size={16} color="rgba(255,255,255,0.25)" style={{ marginLeft: 'auto' }} />
-                  </button>
-                </>
-              )}
-            </div>
+    <div
+      className="fixed inset-0 h-screen z-200 flex flex-col bg-background/80 backdrop-blur-sm"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(100%)',
+        transition: 'opacity 0.25s ease, transform 0.42s cubic-bezier(0.32,0.72,0,1)',
+      }}
+    >
+      {/* ══════════════════ PICK SCREEN ══════════════════ */}
+      {!hasMedia && (
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 pt-14 pb-1">
+            <button type="button" onClick={onClose}
+              className="rounded-full p-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+            <h1 className="font-serif text-xl font-semibold text-foreground tracking-tight">New Story</h1>
+            <div className="w-9" />
           </div>
-        )}
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* MEDIA STAGE — everything overlaid on the media                    */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {hasMedia && (
-          <div ref={stageRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
-
-            {/* Media */}
-            {mediaKind === 'image'
-              ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-            }
-
-            {/* Draw canvas */}
-            <canvas ref={canvasRef}
-              style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: tool === 'draw' ? 'crosshair' : 'default', pointerEvents: tool === 'draw' ? 'auto' : 'none' }}
-              onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-            />
-
-            {/* Text labels */}
-            {textItems.map(item => (
-              <span key={item.id} onPointerDown={e => dragText(item.id, e)}
-                style={{
-                  position: 'absolute', zIndex: 15,
-                  left: `${item.x * 100}%`, top: `${item.y * 100}%`,
-                  transform: `translate(-50%,-50%) scale(${isDragging === item.id ? 1.07 : 1})`,
-                  color: item.color, fontSize: item.size, fontWeight: 700,
-                  textShadow: '0 2px 10px rgba(0,0,0,0.7)',
-                  touchAction: 'none', cursor: 'grab', userSelect: 'none',
-                  transition: 'transform 0.1s',
-                }}>{item.text}</span>
-            ))}
-
-            {/* ── TOP BAR ──────────────────────────────────────────────── */}
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '48px 14px 16px',
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.52) 0%, transparent 100%)',
-              pointerEvents: 'none',
-            }}>
-              {/* Left: close */}
-              <button type="button" onClick={() => reset()} className="gbtn" style={{ pointerEvents: 'auto' }}><X size={18} /></button>
-
-              {/* Center: music badge when set */}
-              {youtubeTitle && tool === 'none' && panel === 'none' ? (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 100, padding: '6px 12px', maxWidth: 200, pointerEvents: 'auto' }} onClick={() => setPanel('music')}>
-                  <Music size={12} color="#FF385C" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{youtubeTitle}</span>
-                </div>
-              ) : <div />}
-
-              {/* Right: undo / close tool */}
-              {tool === 'draw' ? (
-                <button type="button" onClick={undo} className="gbtn" style={{ pointerEvents: 'auto' }}><RotateCcw size={16} /></button>
-              ) : tool === 'text' ? (
-                <button type="button" onClick={() => { setTool('none'); setActiveText(''); }} className="gbtn" style={{ pointerEvents: 'auto' }}><X size={16} /></button>
-              ) : <div style={{ width: 42 }} />}
-            </div>
-
-            {/* ── RIGHT TOOLBAR (default mode) ─────────────────────────── */}
-            {tool === 'none' && panel === 'none' && (
-              <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 10, zIndex: 30 }}>
-                <button type="button" onClick={() => setTool('draw')} className="gbtn" title="Draw"><Pen size={18} /></button>
-                <button type="button" onClick={() => setTool('text')} className="gbtn" title="Text"><Type size={18} /></button>
-                {hasDrawings && (
-                  <button type="button" className="gbtn" title="Clear" onClick={() => {
-                    const c = canvasRef.current;
-                    if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
-                    setTextItems([]); undoStack.current = [];
-                  }}><Trash2 size={16} /></button>
+          <div className="relative flex-1 mx-4 mt-4 overflow-hidden rounded-3xl border border-border/70">
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/20 blur-3xl z-10" />
+            <div className="pointer-events-none absolute -bottom-8 left-4 h-24 w-24 rounded-full bg-secondary/60 blur-2xl z-10" />
+            {cameraActive ? (
+              <>
+                <video ref={cameraVideoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
+                <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent" />
+                {isRecording && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-destructive/85 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />REC
+                  </div>
                 )}
-                <button type="button" onClick={() => setPanel('music')} className={`gbtn${youtubeTitle ? ' on' : ''}`} title="Music"><Music size={18} /></button>
-              </div>
-            )}
-
-            {/* ── DRAW PALETTE ─────────────────────────────────────────── */}
-            {tool === 'draw' && (
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
-                display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px 38px',
-                background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(20px)',
-                overflowX: 'auto',
-              }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 4, flexShrink: 0 }}>
-                  {BRUSH_SIZES.map(s => (
-                    <div key={s} className={`bdot${brushSize === s ? ' on' : ''}`}
-                      style={{ width: s + 16, height: s + 16 }} onClick={() => setBrushSize(s)}>
-                      <div style={{ width: s, height: s, borderRadius: '50%', background: 'white' }} />
-                    </div>
-                  ))}
-                </div>
-                {COLORS.map(c => (
-                  <div key={c} className={`cdot${color === c ? ' sel' : ''}`}
-                    style={{ width: 28, height: 28, background: c }} onClick={() => setColor(c)} />
-                ))}
-              </div>
-            )}
-
-            {/* ── TEXT BAR ─────────────────────────────────────────────── */}
-            {tool === 'text' && (
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
-                display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 38px',
-                background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(20px)',
-              }}>
-                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                  {COLORS.slice(0, 7).map(c => (
-                    <div key={c} className={`cdot${color === c ? ' sel' : ''}`}
-                      style={{ width: 22, height: 22, background: c }} onClick={() => setColor(c)} />
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <button type="button" className="sz-btn" onClick={() => setTextSize(s => Math.max(16, s - 4))}><Minus size={11} /></button>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', width: 22, textAlign: 'center' }}>{textSize}</span>
-                  <button type="button" className="sz-btn" onClick={() => setTextSize(s => Math.min(72, s + 4))}><Plus size={11} /></button>
-                </div>
-                <input autoFocus value={activeText} onChange={e => setActiveText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') addText(); }}
-                  placeholder="Type something…"
-                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'white', fontSize: 15, fontFamily: 'DM Sans, sans-serif' }} />
-                <button type="button" onClick={addText}
-                  style={{ width: 32, height: 32, borderRadius: '50%', background: 'white', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                  <Check size={14} color="black" />
+                <button type="button" onClick={flipCamera}
+                  className="absolute right-3 top-3 rounded-full border border-white/25 bg-black/40 p-2 text-white backdrop-blur-sm hover:bg-black/60 transition-colors">
+                  <SwitchCamera className="h-4 w-4" />
                 </button>
+              </>
+            ) : (
+              <div className="flex h-full min-h-52 flex-col items-center justify-center gap-3 bg-muted/20">
+                <div className="rounded-full border border-border/60 bg-background/70 p-5 backdrop-blur-sm">
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground">Camera preview</p>
               </div>
             )}
-
-            {/* ── VIDEO TRIM ───────────────────────────────────────────── */}
-            {mediaKind === 'video' && videoDuration > MAX_VIDEO_DURATION && tool === 'none' && panel === 'none' && (
-              <div style={{ position: 'absolute', bottom: 108, left: 0, right: 0, zIndex: 20, padding: '10px 20px', background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(12px)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.42)' }}>{startOffset.toFixed(1)}s</span>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>30s clip</span>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.42)' }}>{endOffset.toFixed(1)}s</span>
-                </div>
-                <input type="range" min={0} max={maxStart} step={0.1} value={startOffset}
-                  onChange={e => setStartOffset(parseFloat(e.target.value))} className="scrub" />
-              </div>
-            )}
-
-            {/* ── BOTTOM ACTION BAR (default mode) ─────────────────────── */}
-            {tool === 'none' && panel === 'none' && (
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
-                padding: '0 16px 38px',
-                background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 60%, transparent 100%)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Caption tap target */}
-                  <button type="button" onClick={() => setPanel('share')}
-                    style={{
-                      flex: 1, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(14px)',
-                      border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14,
-                      padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8,
-                      cursor: 'pointer', textAlign: 'left',
-                    }}>
-                    <AlignCenter size={15} color="rgba(255,255,255,0.45)" style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: 14, color: caption ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.32)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {caption || 'Add a caption…'}
-                    </span>
-                  </button>
-                  {/* Quick share */}
-                  <button type="button" onClick={handlePost} disabled={isPosting}
-                    style={{
-                      height: 46, borderRadius: 14, flexShrink: 0,
-                      background: 'linear-gradient(135deg,#FF385C,#FF6B35)',
-                      border: 'none', padding: '0 18px',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      color: 'white', fontWeight: 700, fontSize: 14, letterSpacing: '-0.2px',
-                      cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,56,92,0.5)',
-                      opacity: isPosting ? 0.7 : 1,
-                    }}>
-                    {isPosting
-                      ? <><div className="spinner" /><span style={{ fontSize: 13 }}>{uploadStep || '…'}</span></>
-                      : <><Sparkles size={16} /><span>Share</span></>
-                    }
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── SLIDE-UP PANELS ──────────────────────────────────────── */}
-            {/* Backdrop */}
-            {panel !== 'none' && (
-              <div onClick={() => setPanel('none')}
-                style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(2px)' }} />
-            )}
-
-            <div className={`panel ${panel !== 'none' ? 'open' : 'shut'}`}>
-              <div className="handle" onClick={() => setPanel('none')} />
-
-              {/* MUSIC */}
-              {panel === 'music' && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(255,56,92,0.15)', border: '1px solid rgba(255,56,92,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Music size={18} color="#FF385C" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Add Music</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>Paste a YouTube link</div>
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setPanel('none')} className="gbtn sm"><X size={15} /></button>
-                  </div>
-
-                  <input value={youtubeUrl} onChange={e => { setYoutubeUrl(e.target.value); setYoutubeError(''); }}
-                    onKeyDown={e => { if (e.key === 'Enter') confirmMusic(); }}
-                    placeholder="https://youtube.com/watch?v=…" className="field" />
-
-                  {youtubeError && <div className="err" style={{ marginTop: 10 }}>{youtubeError}</div>}
-
-                  {youtubeTitle && !youtubeError && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,56,92,0.1)', border: '1px solid rgba(255,56,92,0.18)', borderRadius: 12, padding: '10px 14px', marginTop: 10 }}>
-                      <Music size={13} color="#FF385C" style={{ flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.78)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{youtubeTitle}</span>
-                    </div>
-                  )}
-
-                  <button type="button" onClick={confirmMusic} className="conf-btn" style={{ marginTop: 16 }}>
-                    {youtubeTitle ? '✓  Confirm song' : 'Add Song'}
-                  </button>
-                </div>
-              )}
-
-              {/* SHARE */}
-              {panel === 'share' && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Caption & Share</span>
-                    <button type="button" onClick={() => setPanel('none')} className="gbtn sm"><X size={15} /></button>
-                  </div>
-
-                  <textarea value={caption} onChange={e => setCaption(e.target.value)}
-                    placeholder="Write a caption…" rows={3} className="field" />
-
-                  {postError && <div className="err" style={{ marginTop: 12 }}>{postError}</div>}
-
-                  <button type="button" onClick={handlePost} disabled={isPosting} className="share-btn" style={{ marginTop: 16 }}>
-                    {isPosting
-                      ? <><div className="spinner" /><span style={{ fontSize: 14 }}>{uploadStep || 'Working…'}</span></>
-                      : <><Sparkles size={18} /><span>Share your story</span></>
-                    }
-                  </button>
-                </div>
-              )}
-            </div>
-
           </div>
-        )}
 
-      </div>
-    </>
+          <div className="px-4 pt-4 pb-10 space-y-3">
+            {cameraActive ? (
+              <div className="flex items-center justify-center gap-7">
+                <button type="button" onClick={stopCamera}
+                  className="rounded-full border border-border/70 bg-background/80 p-2.5 text-muted-foreground hover:bg-muted/60 transition-colors">
+                  <CameraOff className="h-4 w-4" />
+                </button>
+                <button type="button"
+                  onPointerDown={() => { if (!isRecording) startRecording(); }}
+                  onPointerUp={() => { if (isRecording) stopRecording(); }}
+                  onClick={capturePhoto}
+                  className={['h-16 w-16 rounded-full border-4 transition-all duration-150 flex items-center justify-center',
+                    isRecording ? 'border-destructive/80 bg-destructive/20 scale-95' : 'border-foreground/70 bg-foreground/10'].join(' ')}>
+                  {!isRecording && <div className="h-12 w-12 rounded-full bg-foreground/85" />}
+                  {isRecording  && <div className="h-5 w-5 rounded-md bg-destructive" />}
+                </button>
+                <div className="w-10" />
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={startCamera}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors">
+                  <div className="rounded-xl border border-border/60 bg-primary/10 p-2"><Camera className="h-4 w-4 text-primary" /></div>
+                  <span className="font-medium">Open Camera</span>
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </button>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border/50" />
+                  <span className="text-xs text-muted-foreground">or</span>
+                  <div className="h-px flex-1 bg-border/50" />
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) loadMedia(f); }} />
+                <button type="button" onClick={() => fileInputRef.current?.click()}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors">
+                  <div className="rounded-xl border border-border/60 bg-primary/10 p-2"><Upload className="h-4 w-4 text-primary" /></div>
+                  <div className="text-left">
+                    <div className="font-medium">Choose from library</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Photo or video</div>
+                  </div>
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ MEDIA STAGE ══════════════════ */}
+      {hasMedia && (
+        <div
+          ref={stageRef}
+          className="relative w-full h-full"
+          style={{ touchAction: tool === 'draw' ? 'none' : 'auto' }}
+        >
+          {/* Media */}
+          {mediaKind === 'image'
+            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
+            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className="absolute inset-0 h-full w-full object-cover" />
+          }
+
+          {/* Draw canvas */}
+          <canvas ref={canvasRef} className="absolute inset-0"
+            style={{ zIndex: 10, pointerEvents: tool === 'draw' ? 'auto' : 'none', cursor: tool === 'draw' ? 'crosshair' : 'default', touchAction: 'none' }} />
+
+          {/* Text labels */}
+          {textItems.map(item => (
+            <TextLabel key={item.id} item={item} stageRef={stageRef}
+              active={activeItemId === item.id}
+              onActivate={setActiveItemId}
+              onDeactivate={() => setActiveItemId(null)}
+              onChange={handleTextChange}
+            />
+          ))}
+
+          {/* ── TOP BAR ── */}
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 pt-12 pb-5 pointer-events-none"
+            style={{ zIndex: 30, background: 'linear-gradient(to bottom, rgba(0,0,0,0.48) 0%, transparent 100%)' }}>
+            <button type="button" onClick={reset}
+              className="pointer-events-auto rounded-full border border-white/20 bg-black/35 p-2 text-white backdrop-blur-sm hover:bg-black/55 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+
+            {/* Music badge */}
+            {musicSelection && !inToolMode && panel === 'none' ? (
+              <button type="button" onClick={() => setPanel('music')}
+                className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/22 bg-black/40 pl-1 pr-3 py-1 text-xs text-white backdrop-blur-sm max-w-50">
+                {musicSelection.thumbnail && (
+                  <img src={musicSelection.thumbnail} alt="" className="h-7 w-10 rounded-full object-cover shrink-0" />
+                )}
+                <span className="truncate">{musicSelection.title}</span>
+                {musicSelection.startSec > 0 && (
+                  <span className="text-white/50 shrink-0">{fmtSec(musicSelection.startSec)}</span>
+                )}
+              </button>
+            ) : <div />}
+
+            <div className="pointer-events-auto flex items-center gap-1.5">
+              {tool === 'draw' && (
+                <button type="button" onClick={undo}
+                  className="rounded-full border border-white/20 bg-black/35 p-2 text-white backdrop-blur-sm">
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              )}
+              {inToolMode && (
+                <button type="button" onClick={() => { setTool('none'); setActiveText(''); }}
+                  className="rounded-full border border-white/80 bg-white/90 px-4 py-1.5 text-xs font-semibold text-black">
+                  Done
+                </button>
+              )}
+              {!inToolMode && <div className="w-9" />}
+            </div>
+          </div>
+
+          {/* ── LEFT: brush sizes ── */}
+          {tool === 'draw' && (
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3" style={{ zIndex: 30 }}>
+              {BRUSH_SIZES.map(s => (
+                <button key={s} type="button" onClick={() => setBrushSize(s)}
+                  className={['rounded-full border-2 flex items-center justify-center transition-all', brushSize === s ? 'border-white' : 'border-white/35'].join(' ')}
+                  style={{ width: s + 18, height: s + 18 }}>
+                  <div className="rounded-full bg-white" style={{ width: s, height: s }} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── RIGHT: colors ── */}
+          {(tool === 'draw' || tool === 'text') && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2.5" style={{ zIndex: 30 }}>
+              {COLORS.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className="rounded-full border-2 transition-all"
+                  style={{
+                    width: 28, height: 28, background: c,
+                    borderColor: color === c ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.2)',
+                    transform: color === c ? 'scale(1.25)' : 'scale(1)',
+                    boxShadow: color === c ? '0 0 0 2px rgba(0,0,0,0.3)' : 'none',
+                  }} />
+              ))}
+            </div>
+          )}
+
+          {/* ── TEXT BAR ── */}
+          {tool === 'text' && (
+            <div className="absolute bottom-0 left-0 right-0 flex items-center gap-2 px-3 py-3 pb-9"
+              style={{ zIndex: 20, background: 'rgba(0,0,0,0.44)', backdropFilter: 'blur(16px)' }}>
+              <div className="flex items-center gap-1 shrink-0">
+                <button type="button" onClick={() => setTextSize(s => Math.max(16, s - 4))} className="rounded-full bg-white/10 px-2 py-1 text-white text-xs font-bold">A</button>
+                <span className="w-6 text-center text-xs text-white/60">{textSize}</span>
+                <button type="button" onClick={() => setTextSize(s => Math.min(72, s + 4))} className="rounded-full bg-white/10 px-2 py-1 text-white text-base font-bold leading-none">A</button>
+              </div>
+              <input autoFocus value={activeText}
+                onChange={e => setActiveText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addText(); }}
+                placeholder="Type something…"
+                className="flex-1 bg-transparent text-white placeholder:text-white/35 text-sm outline-none" />
+              <button type="button" onClick={addText} className="rounded-full bg-white p-1.5 text-black shrink-0">
+                <Check className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* ── IDLE RIGHT TOOLBAR ── */}
+          {tool === 'none' && panel === 'none' && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-2" style={{ zIndex: 30 }}>
+              <button type="button" onClick={() => setTool('draw')}
+                className="rounded-full border border-white/20 bg-black/38 p-2.5 text-white backdrop-blur-sm hover:bg-black/55 transition-colors">
+                <Pen className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => setTool('text')}
+                className="rounded-full border border-white/20 bg-black/38 p-2.5 text-white backdrop-blur-sm hover:bg-black/55 transition-colors">
+                <Type className="h-4 w-4" />
+              </button>
+              {hasEdits && (
+                <button type="button"
+                  onClick={() => { const c = canvasRef.current; if (c) c.getContext('2d')!.clearRect(0,0,c.width,c.height); setTextItems([]); undoStack.current = []; }}
+                  className="rounded-full border border-white/20 bg-black/38 p-2.5 text-white backdrop-blur-sm hover:bg-black/55 transition-colors">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button type="button" onClick={() => setPanel('music')}
+                className={['rounded-full border p-2.5 backdrop-blur-sm transition-colors',
+                  musicSelection ? 'border-primary/50 bg-primary/20 text-primary' : 'border-white/20 bg-black/38 text-white hover:bg-black/55'].join(' ')}>
+                <Music className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* ── VIDEO TRIM ── */}
+          {mediaKind === 'video' && videoDuration > MAX_VIDEO_DURATION && tool === 'none' && panel === 'none' && (
+            <div className="absolute left-0 right-0 px-4 py-3"
+              style={{ zIndex: 20, bottom: 100, background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(10px)' }}>
+              <div className="flex justify-between text-[10px] text-white/50 mb-1.5">
+                <span>{startOffset.toFixed(1)}s</span>
+                <span className="text-white/65 font-medium">30s clip</span>
+                <span>{endOffset.toFixed(1)}s</span>
+              </div>
+              <input type="range" min={0} max={maxStart} step={0.1} value={startOffset}
+                onChange={e => setStartOffset(parseFloat(e.target.value))} className="w-full accent-primary h-1" />
+            </div>
+          )}
+
+          {/* ── BOTTOM ACTION BAR ── */}
+          {tool === 'none' && panel === 'none' && (
+            <div className="absolute bottom-0 left-0 right-0 px-4 pb-9 pt-10"
+              style={{ zIndex: 20, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)' }}>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setPanel('share')}
+                  className="flex flex-1 items-center gap-2.5 rounded-2xl border border-white/18 bg-black/30 px-4 py-3 text-left backdrop-blur-sm hover:bg-black/42 transition-colors">
+                  <AlignCenter className="h-4 w-4 text-white/42 shrink-0" />
+                  <span className={['text-sm truncate', caption ? 'text-white/80' : 'text-white/35'].join(' ')}>
+                    {caption || 'Add a caption…'}
+                  </span>
+                </button>
+                <Button onClick={handlePost} disabled={isPosting} className="h-11 gap-1.5 rounded-2xl px-5 shrink-0">
+                  {isPosting
+                    ? <><img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" /><span className="text-sm">{uploadStep || '…'}</span></>
+                    : <><Sparkles className="h-4 w-4" />Share</>
+                  }
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PANEL SCRIM ── */}
+          {panel !== 'none' && (
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" style={{ zIndex: 40 }} onClick={() => setPanel('none')} />
+          )}
+
+          {/* ── SLIDE-UP PANELS ── */}
+          <div
+            className="glass-panel absolute left-0 right-0 bottom-0 rounded-t-3xl border-t border-border/60 px-5 pb-10"
+            style={{ zIndex: 50, transform: panel !== 'none' ? 'translateY(0)' : 'translateY(110%)', transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)' }}
+          >
+            <div className="mx-auto mt-3 mb-5 h-1 w-9 rounded-full bg-border cursor-pointer" onClick={() => setPanel('none')} />
+
+            {panel === 'music' && (
+              <MusicPanel
+                selection={musicSelection}
+                onConfirm={sel => { setMusicSelection(sel); setPanel('none'); }}
+                onClear={() => { setMusicSelection(null); setPanel('none'); }}
+                onClose={() => setPanel('none')}
+              />
+            )}
+
+            {panel === 'share' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-foreground">Caption & Share</p>
+                  <button type="button" onClick={() => setPanel('none')}
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-muted/60 transition-colors">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <textarea value={caption} onChange={e => setCaption(e.target.value)}
+                  placeholder="Write a caption…" rows={3}
+                  className="w-full resize-none rounded-2xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:outline-none focus:border-primary/40 transition-colors" />
+                {postError && (
+                  <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{postError}</p>
+                )}
+                <Button onClick={handlePost} disabled={isPosting} className="w-full h-12 rounded-2xl text-base font-semibold gap-2">
+                  {isPosting
+                    ? <><img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" />{uploadStep || 'Working…'}</>
+                    : <><Sparkles className="h-4 w-4" />Share your story</>
+                  }
+                </Button>
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+    </div>
   );
 }

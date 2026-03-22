@@ -24,7 +24,6 @@ interface StoryViewerProps {
   onClose: () => void;
 }
 
-// ── YouTube IFrame API ────────────────────────────────────────────────────────
 interface YTPlayer {
   destroy: () => void;
   playVideo: () => void;
@@ -37,7 +36,7 @@ interface StoryYTNamespace {
 
 let ytApiPromise: Promise<StoryYTNamespace> | null = null;
 function loadYT(): Promise<StoryYTNamespace> {
-  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (window.YT?.Player) return Promise.resolve(window.YT as StoryYTNamespace);
   if (ytApiPromise) return ytApiPromise;
   ytApiPromise = new Promise((resolve, reject) => {
     const prev = window.onYouTubeIframeAPIReady;
@@ -85,12 +84,11 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
   const ytContainerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<YTPlayer | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const durationMs = story.media_type === 'video' ? 30_000 : 8_000;
+  const durationMs = story?.media_type === 'video' ? 30_000 : 8_000;
 
-  // Portal needs document to be available (client only)
   useEffect(() => { setMounted(true); }, []);
 
-  // ── Progress bar ──────────────────────────────────────────────────────────
+  // ── Progress bar
   useEffect(() => {
     setProgress(0);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -110,26 +108,47 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
-  // ── YouTube autoplay ──────────────────────────────────────────────────────
+  // ── YouTube autoplay — safe cleanup avoids removeChild errors
   useEffect(() => {
     if (!story.youtube_url || !ytContainerRef.current) return;
     const videoId = extractVideoId(story.youtube_url);
     if (!videoId) return;
 
+    // Create a fresh child div that YT owns — we remove it before destroy()
+    const mountEl = document.createElement('div');
+    ytContainerRef.current.appendChild(mountEl);
+
     let cancelled = false;
+    let player: YTPlayer | null = null;
+
     loadYT().then((YT: StoryYTNamespace) => {
-      if (cancelled || !ytContainerRef.current) return;
-      ytPlayerRef.current?.destroy();
-      ytPlayerRef.current = new YT.Player(ytContainerRef.current, {
+      if (cancelled || !mountEl.isConnected) return;
+      player = new YT.Player(mountEl, {
         videoId,
-        playerVars: { autoplay: 1, controls: 0, loop: 1, playlist: videoId, mute: 0 },
-        events: { onReady: (e: { target: YTPlayer }) => e.target.playVideo() },
+        // Start muted so browser autoplay policy is satisfied, then unmute
+        playerVars: { autoplay: 1, controls: 0, loop: 1, playlist: videoId, mute: 1 },
+        events: {
+          onReady: (e: { target: YTPlayer & { unMute?: () => void; setVolume?: (v: number) => void } }) => {
+            if (cancelled) return;
+            e.target.playVideo();
+            // Unmute after a short delay — browser autoplay is satisfied by now
+            setTimeout(() => {
+              if (!cancelled) {
+                e.target.unMute?.();
+                e.target.setVolume?.(100);
+              }
+            }, 300);
+          },
+        },
       });
+      ytPlayerRef.current = player;
     }).catch(() => undefined);
 
     return () => {
       cancelled = true;
-      try { ytPlayerRef.current?.destroy(); } catch { /* ignore */ }
+      // Detach mount element first — prevents YT removeChild from failing
+      try { if (mountEl.parentNode) mountEl.parentNode.removeChild(mountEl); } catch { /* ignore */ }
+      try { player?.destroy(); } catch { /* ignore */ }
       ytPlayerRef.current = null;
     };
   }, [story.youtube_url]);
@@ -139,7 +158,6 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
     setIndex(newIndex);
   };
 
-  // ── Keyboard nav ──────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -151,57 +169,40 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
-  if (!mounted) return null;
+  // Close safely via effect if story is out of bounds — never call onClose() during render
+  useEffect(() => {
+    if (mounted && !story) onClose();
+  }, [mounted, story, onClose]);
+
+  if (!mounted || !story) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-      {/* Close */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
-      >
+      <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
         <X className="h-5 w-5" />
       </button>
-
-      {/* Prev */}
       {index > 0 && (
-        <button
-          type="button"
-          onClick={() => goTo(index - 1)}
-          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
-        >
+        <button type="button" onClick={() => goTo(index - 1)} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
           <ChevronLeft className="h-5 w-5" />
         </button>
       )}
-
-      {/* Next */}
       {index < stories.length - 1 && (
-        <button
-          type="button"
-          onClick={() => goTo(index + 1)}
-          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
-        >
+        <button type="button" onClick={() => goTo(index + 1)} className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
           <ChevronRight className="h-5 w-5" />
         </button>
       )}
 
-      {/* Story card */}
       <div className="relative mx-auto h-[90vh] w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl">
-
         {/* Progress bars */}
         <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 p-3">
           {stories.map((_, i) => (
             <div key={i} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
-              <div
-                className="h-full rounded-full bg-white transition-none"
-                style={{ width: i < index ? '100%' : i === index ? `${progress}%` : '0%' }}
-              />
+              <div className="h-full rounded-full bg-white transition-none" style={{ width: i < index ? '100%' : i === index ? `${progress}%` : '0%' }} />
             </div>
           ))}
         </div>
 
-        {/* Author + time */}
+        {/* Author */}
         <div className="absolute left-0 right-0 top-6 z-20 flex items-center gap-2.5 px-4 pt-2">
           <div className="h-8 w-8 overflow-hidden rounded-full border border-white/40 bg-white/20">
             {story.author.avatar_url ? (
@@ -220,54 +221,35 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
 
         {/* Media */}
         {story.media_type === 'video' && story.video_url ? (
-          <video
-            src={story.video_url}
-            className="h-full w-full object-cover"
-            autoPlay
-            playsInline
-            loop
-            muted={!!story.youtube_url}
-          />
+          <video src={story.video_url} className="h-full w-full object-cover" autoPlay playsInline loop muted={!!story.youtube_url} />
         ) : (
-          <img
-            src={story.image_url}
-            alt={story.caption ?? 'Story'}
-            className="h-full w-full object-cover"
-          />
+          <img src={story.image_url} alt={story.caption ?? 'Story'} className="h-full w-full object-cover" />
         )}
 
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
 
-        {/* Caption */}
         {story.caption && (
           <div className="absolute bottom-16 left-0 right-0 px-5">
-            <p className="text-center text-sm font-medium leading-relaxed text-white drop-shadow-lg">
-              {story.caption}
-            </p>
+            <p className="text-center text-sm font-medium leading-relaxed text-white drop-shadow-lg">{story.caption}</p>
           </div>
         )}
 
-        {/* Song badge */}
         {story.youtube_url && (
           <div className="absolute bottom-5 left-0 right-0 flex justify-center">
             <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
               <Music className="h-3 w-3 animate-pulse text-primary" />
-              <span className="text-xs text-white/90 truncate max-w-45">
-                {story.youtube_title ?? 'Playing music'}
-              </span>
+              <span className="text-xs text-white/90 truncate max-w-45">{story.youtube_title ?? 'Playing music'}</span>
             </div>
           </div>
         )}
 
-        {/* Hidden YT player */}
-        {story.youtube_url && (
-          <div
-            ref={ytContainerRef}
-            className="absolute pointer-events-none"
-            style={{ width: 1, height: 1, opacity: 0, left: -9999 }}
-          />
-        )}
+        {/* YT container — kept in DOM so player mounts correctly */}
+        <div
+          ref={ytContainerRef}
+          aria-hidden="true"
+          className="absolute pointer-events-none"
+          style={{ width: 1, height: 1, opacity: 0, left: -9999, top: 0 }}
+        />
       </div>
     </div>,
     document.body

@@ -15,6 +15,22 @@ function createCloudinarySignature(params: Record<string, string>, apiSecret: st
   return createHash('sha1').update(`${sortedParams}${apiSecret}`).digest('hex');
 }
 
+// ── Cloudinary URL transformations (no SDK needed) ───────────────────────────
+
+function applyImageTransformations(url: string): string {
+  // Insert transformation segment: auto quality, auto format, max width 1080
+  // e.g. https://res.cloudinary.com/{cloud}/image/upload/v123/nous/file.jpg
+  //   →  https://res.cloudinary.com/{cloud}/image/upload/q_auto,f_auto,w_1080/v123/nous/file.jpg
+  return url.replace('/image/upload/', '/image/upload/q_auto,f_auto,w_1080/');
+}
+
+function applyVideoTransformations(url: string, startOffset: number): string {
+  // Video is already trimmed server-side via so_/eo_ upload params.
+  // Apply quality + format auto on top for delivery optimization.
+  // f_auto picks webm for supporting browsers, mp4 otherwise.
+  return url.replace('/video/upload/', '/video/upload/q_auto,f_auto/');
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -101,8 +117,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
+    // Apply Cloudinary URL transformations for optimized delivery
+    const optimizedUrl = isImage
+      ? applyImageTransformations(uploadResult.secure_url)
+      : applyVideoTransformations(uploadResult.secure_url, startOffset);
+
     return NextResponse.json({
-      secureUrl: uploadResult.secure_url,
+      secureUrl: optimizedUrl,
       publicId: uploadResult.public_id,
       resourceType,
       duration: uploadResult.duration ?? null,

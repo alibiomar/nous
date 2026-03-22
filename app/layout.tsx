@@ -5,6 +5,7 @@ import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
 import { GlobalCursors } from '@/components/global-cursors'
 import { GlobalMediaPlayer } from '@/components/global-media-player'
+import { AppShell } from '@/components/app-shell'
 import './globals.css'
 
 const cormorant = Cormorant_Garamond({ 
@@ -36,18 +37,9 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      {
-        url: '/icon.svg',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon.svg',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
+      { url: '/icon.svg', media: '(prefers-color-scheme: light)' },
+      { url: '/icon.svg', media: '(prefers-color-scheme: dark)' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
     ],
     apple: '/apple-icon.png',
   },
@@ -65,7 +57,9 @@ export default function RootLayout({
           <UnreadMessagesProvider>
             <CallProvider>
               <GlobalCursors />
-              {children}
+              <AppShell>
+                {children}
+              </AppShell>
               <GlobalMediaPlayer />
             </CallProvider>
           </UnreadMessagesProvider>
