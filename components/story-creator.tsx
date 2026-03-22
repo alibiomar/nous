@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  CameraOff, Check, ChevronRight, Music,
+  CameraOff, Check, Music,
   Pen, RotateCcw, Search, SwitchCamera, Type, Upload, X,
   Sparkles, AlignCenter, Trash2, Clock, Loader2,
 } from 'lucide-react';
@@ -74,36 +74,27 @@ async function flattenToBlob(
   overlayCanvas: HTMLCanvasElement,
   textItems: TextItem[],
 ): Promise<Blob> {
-  const TARGET_RATIO = 9 / 16;
-  const stageW = overlayCanvas.width;
-  const stageH = overlayCanvas.height;
- 
-  let outW: number, outH: number;
-  if (stageW / stageH > TARGET_RATIO) {
-    outH = stageH; outW = Math.round(outH * TARGET_RATIO);
-  } else {
-    outW = stageW; outH = Math.round(outW / TARGET_RATIO);
-  }
- 
+  // Output at the stage's natural size — no client-side 9:16 crop.
+  // The server (Cloudinary) applies ar_9:16,c_fill for the final crop.
+  const outW = overlayCanvas.width;
+  const outH = overlayCanvas.height;
+
   const out = document.createElement('canvas');
   out.width = outW; out.height = outH;
   const ctx = out.getContext('2d')!;
- 
-  const offsetX = Math.round((stageW - outW) / 2);
-  const offsetY = Math.round((stageH - outH) / 2);
- 
-  const mW = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoWidth  : (mediaEl as HTMLImageElement).naturalWidth;
-  const mH = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoHeight : (mediaEl as HTMLImageElement).naturalHeight;
-  let sx = 0, sy = 0, sw = mW, sh = mH;
-  if (mW / mH > TARGET_RATIO) { sw = Math.round(mH * TARGET_RATIO); sx = Math.round((mW - sw) / 2); }
-  else { sh = Math.round(mW / TARGET_RATIO); sy = Math.round((mH - sh) / 2); }
-  ctx.drawImage(mediaEl, sx, sy, sw, sh, 0, 0, outW, outH);
- 
-  ctx.drawImage(overlayCanvas, offsetX, offsetY, outW, outH, 0, 0, outW, outH);
- 
+
+  // Draw the full media into the stage bounds
+  ctx.drawImage(mediaEl, 0, 0, outW, outH);
+
+  // Bake draw strokes
+  ctx.drawImage(overlayCanvas, 0, 0, outW, outH);
+
+  // Bake text labels
   for (const item of textItems) {
     ctx.save();
-    ctx.translate(item.x * stageW - offsetX, item.y * stageH - offsetY);
+    ctx.translate(item.x * outW, item.y * outH);
+    ctx.rotate((item.rotate * Math.PI) / 180);
+    ctx.scale(item.scale, item.scale);
     ctx.font      = `bold ${item.size}px sans-serif`;
     ctx.fillStyle = item.color;
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
@@ -114,7 +105,7 @@ async function flattenToBlob(
     ctx.fillText(item.text, 0, 0);
     ctx.restore();
   }
- 
+
   return new Promise((res, rej) =>
     out.toBlob((b) => b ? res(b) : rej(new Error('Canvas empty')), 'image/jpeg', COMPRESS_QUALITY)
   );
@@ -599,6 +590,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording]   = useState(false);
   const [cameraError, setCameraError]   = useState(false);
+  const [galleryThumb, setGalleryThumb] = useState<string | null>(null); // last-captured frame preview
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
   const recordChunks   = useRef<Blob[]>([]);
@@ -655,10 +647,18 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     else setVisible(false);
   }, [open]);
 
+  // ── Body scroll lock ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   // ── Reset ──────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
-    cameraStream?.getTracks().forEach(t => t.stop());
-    setCameraStream(null); setCameraActive(false); setCameraError(false);
+    setCameraStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
+    setCameraActive(false); setCameraError(false);
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaFile(null); setMediaPreview(null); setMediaKind('image');
     setVideoDuration(0); setStartOffset(0);
@@ -666,53 +666,68 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     setPanel('none'); setMusicSelection(null); ytStop();
     setCaption(''); setIsPosting(false); setUploadStep(''); setPostError('');
     undoStack.current = [];
-  }, [mediaPreview, cameraStream]);
+  }, [mediaPreview]);
 
   useEffect(() => { if (!open) reset(); }, [open, reset]);
 
   // ── Camera ─────────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
-    cameraStream?.getTracks().forEach(t => t.stop());
-    setCameraStream(null); setCameraActive(false);
-  }, [cameraStream]);
+    setCameraStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
+    setCameraActive(false);
+  }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (facing: 'user' | 'environment') => {
     setCameraError(false);
+    // Stop any existing tracks first
+    setCameraStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
     try {
+      // No width/height ideal constraints — avoids digital zoom on mobile.
+      // The camera delivers its native resolution; server crops to 9:16 via Cloudinary.
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: cameraFacing }, width: { ideal: 1080 }, height: { ideal: 1920 } },
+        video: { facingMode: { ideal: facing } },
         audio: true,
       });
       setCameraStream(stream); setCameraActive(true);
-      if (cameraVideoRef.current) {
-        cameraVideoRef.current.srcObject = stream;
-        await cameraVideoRef.current.play();
+      const vid = cameraVideoRef.current;
+      if (vid) {
+        vid.srcObject = stream;
+        await vid.play();
+        // Grab a single frame ~500ms after play to use as gallery button thumbnail
+        setTimeout(() => {
+          if (!vid.videoWidth) return;
+          const c = document.createElement('canvas');
+          c.width = 60; c.height = 80; // small thumbnail
+          c.getContext('2d')!.drawImage(vid, 0, 0, 60, 80);
+          setGalleryThumb(c.toDataURL('image/jpeg', 0.6));
+        }, 500);
       }
     } catch {
       setCameraError(true);
     }
-  }, [cameraFacing]);
+  }, []);
 
   const flipCamera = useCallback(() => {
-    stopCamera(); setCameraFacing(f => f === 'user' ? 'environment' : 'user');
-  }, [stopCamera]);
+    setCameraFacing(f => f === 'user' ? 'environment' : 'user');
+  }, []);
 
-  // ── Auto-start camera when component opens (no media loaded yet) ────────────
+  // ── Auto-start / restart camera on open or facing change ───────────────────
   useEffect(() => {
     if (open && !mediaPreview) {
-      startCamera();
+      startCamera(cameraFacing);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // Restart camera when facing direction changes
-  useEffect(() => { if (cameraActive) startCamera(); }, [cameraFacing]);
+  }, [open, cameraFacing]);
 
   const capturePhoto = useCallback(() => {
     const vid = cameraVideoRef.current; if (!vid) return;
     const c = document.createElement('canvas');
     c.width = vid.videoWidth; c.height = vid.videoHeight;
     c.getContext('2d')!.drawImage(vid, 0, 0);
+    // Save small thumbnail for gallery button background
+    const thumb = document.createElement('canvas');
+    thumb.width = 60; thumb.height = 80;
+    thumb.getContext('2d')!.drawImage(vid, 0, 0, 60, 80);
+    setGalleryThumb(thumb.toDataURL('image/jpeg', 0.6));
     c.toBlob(blob => {
       if (!blob) return;
       stopCamera();
@@ -839,10 +854,11 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, []);
 
   // ── Post ───────────────────────────────────────────────────────────────────
-  const uploadFile = async (file: File, startOff = 0) => {
+  const uploadFile = async (file: File, startOff = 0, isSelfie = false) => {
     const fd = new FormData();
     fd.append('file', file);
     if (file.type.startsWith('video/')) fd.append('startOffset', startOff.toString());
+    if (isSelfie) fd.append('isSelfie', 'true');
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok || !data.secureUrl) { setPostError(data?.error || 'Upload failed'); return null; }
@@ -855,9 +871,17 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     try {
       let imageFile: File; let videoFile: File | null = null;
       if (mediaKind === 'image') {
-        setUploadStep('Rendering edits…');
-        const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems);
-        imageFile = await compressImage(new File([blob], 'story.jpg', { type: 'image/jpeg' }));
+        const hasDrawOrText = undoStack.current.length > 0 || textItems.length > 0;
+        if (hasDrawOrText) {
+          // Bake draw strokes + text overlays onto the image, then let Cloudinary crop
+          setUploadStep('Rendering edits…');
+          const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems);
+          imageFile = await compressImage(new File([blob], 'story.jpg', { type: 'image/jpeg' }));
+        } else {
+          // No edits — send raw file; Cloudinary handles 9:16 crop server-side
+          setUploadStep('Preparing…');
+          imageFile = await compressImage(mediaFile);
+        }
       } else {
         setUploadStep('Creating thumbnail…');
         const vid = editVidRef.current!;
@@ -869,7 +893,10 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         videoFile = mediaFile;
       }
       setUploadStep('Uploading…');
-      const imgR = await uploadFile(imageFile); if (!imgR) return;
+      // isSelfie: front-camera captures are mirrored by the browser preview;
+      // the server applies a_hflip via Cloudinary to restore natural orientation.
+      const selfie = mediaKind === 'image' && cameraFacing === 'user';
+      const imgR = await uploadFile(imageFile, 0, selfie); if (!imgR) return;
       let videoUrl: string | null = null, videoPublicId: string | null = null;
       if (videoFile) {
         const vidR = await uploadFile(videoFile, startOffset); if (!vidR) return;
@@ -987,8 +1014,15 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
                 onClick={() => fileInputRef.current?.click()}
                 className="flex flex-col items-center gap-1.5"
               >
-                <div className="rounded-2xl border-2 border-white/30 bg-black/40 p-3 backdrop-blur-sm hover:bg-black/60 transition-colors">
-                  <Upload className="h-5 w-5 text-white" />
+                <div
+                  className="rounded-2xl border-2 border-white/40 overflow-hidden transition-opacity hover:opacity-80"
+                  style={{ width: 48, height: 48, background: galleryThumb ? `url(${galleryThumb}) center/cover` : 'rgba(0,0,0,0.45)' }}
+                >
+                  {!galleryThumb && (
+                    <div className="flex items-center justify-center w-full h-full">
+                      <Upload className="h-5 w-5 text-white/70" />
+                    </div>
+                  )}
                 </div>
                 <span className="text-[10px] text-white/55 font-medium">Gallery</span>
               </button>

@@ -29,7 +29,7 @@ interface StoriesBarProps {
 
 export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: StoriesBarProps) {
   const [stories, setStories] = useState<Story[]>([]);
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [viewerAuthorId, setViewerAuthorId] = useState<string | null>(null);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
 
   const fetchStories = async () => {
@@ -55,30 +55,16 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   const authorIds = Object.keys(grouped).sort((a) => (a === currentUserId ? 1 : -1));
 
   const openStories = (authorId: string) => {
-    const idx = stories.findIndex((s) => s.user_id === authorId);
-    if (idx === -1) return;
-    setViewerIndex(idx);
+    setViewerAuthorId(authorId);
     setSeenIds((prev) => {
       const next = new Set(prev);
-      grouped[authorId].forEach((s) => next.add(s.id));
+      grouped[authorId]?.forEach((s) => next.add(s.id));
       return next;
     });
   };
 
   const handleDelete = (storyId: string) => {
-    setStories((prev) => {
-      const next = prev.filter((s) => s.id !== storyId);
-      // Adjust viewer index: if the deleted story was before or at the current index, shift back
-      setViewerIndex((idx) => {
-        if (idx === null) return null;
-        const deletedAt = prev.findIndex((s) => s.id === storyId);
-        if (next.length === 0) return null;
-        if (deletedAt < idx) return idx - 1;
-        if (deletedAt === idx) return Math.min(idx, next.length - 1);
-        return idx;
-      });
-      return next;
-    });
+    setStories((prev) => prev.filter((s) => s.id !== storyId));
   };
 
   if (stories.length === 0 && authorIds.length === 0) {
@@ -140,12 +126,12 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
         })}
       </div>
 
-      {viewerIndex !== null && (
+      {viewerAuthorId !== null && grouped[viewerAuthorId] && (
         <StoryViewer
-          stories={stories}
-          initialIndex={viewerIndex}
+          stories={grouped[viewerAuthorId]}
+          initialIndex={0}
           currentUserId={currentUserId}
-          onClose={() => setViewerIndex(null)}
+          onClose={() => setViewerAuthorId(null)}
           onDelete={handleDelete}
         />
       )}

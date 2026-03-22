@@ -36,33 +36,6 @@ interface StoryViewerProps {
   onDelete?: (storyId: string) => void; // optional callback after deletion
 }
 
-interface YTPlayer {
-  destroy: () => void;
-  playVideo: () => void;
-  pauseVideo: () => void;
-}
-interface StoryYTNamespace {
-  Player: new (el: HTMLElement, opts: object) => YTPlayer;
-  PlayerState: { PLAYING: number };
-}
-
-let ytApiPromise: Promise<StoryYTNamespace> | null = null;
-function loadYT(): Promise<StoryYTNamespace> {
-  if (window.YT?.Player) return Promise.resolve(window.YT as StoryYTNamespace);
-  if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise((resolve, reject) => {
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { prev?.(); window.YT?.Player ? resolve(window.YT as StoryYTNamespace) : reject(); };
-    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
-      const s = document.createElement('script');
-      s.src = 'https://www.youtube.com/iframe_api';
-      s.onerror = () => reject();
-      document.body.appendChild(s);
-    }
-  });
-  return ytApiPromise;
-}
-
 function extractVideoId(url: string): string | null {
   try {
     const u = new URL(url);
@@ -94,19 +67,13 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
   const [isDeleting, setIsDeleting] = useState(false);
   const story = stories[index];
 
-  const ytContainerRef = useRef<HTMLDivElement | null>(null);
-  const ytPlayerRef = useRef<YTPlayer | null>(null);
+  const [ytSrc, setYtSrc] = useState<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationMs = story?.media_type === 'video' ? 30_000 : 8_000;
 
   const isOwnStory = story?.user_id === currentUserId;
 
-  useEffect(() => {
-    setMounted(true);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   // ── Progress bar
   useEffect(() => {
@@ -128,58 +95,26 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
-  // ── YouTube autoplay — safe cleanup avoids removeChild errors
-useEffect(() => {
-  // Resolve video ID from new column, falling back to parsing legacy youtube_url
-  const videoId =
-    story.youtube_video_id ??
-    (story.youtube_url ? extractVideoId(story.youtube_url) : null);
-  const startSec = story.youtube_start_sec ?? 0;
-
-  if (!videoId || !ytContainerRef.current) return;
-
-  const mountEl = document.createElement('div');
-  ytContainerRef.current.appendChild(mountEl);
-
-  let cancelled = false;
-  let player: YTPlayer | null = null;
-
-  loadYT().then((YT: StoryYTNamespace) => {
-    if (cancelled || !mountEl.isConnected) return;
-    player = new YT.Player(mountEl, {
-      videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 0,
-        loop: 1,
-        playlist: videoId,
-        mute: 1,
-        start: Math.floor(startSec), // seek to the chosen clip start
-      },
-      events: {
-        onReady: (e: { target: YTPlayer & { unMute?: () => void; setVolume?: (v: number) => void } }) => {
-          if (cancelled) return;
-          e.target.playVideo();
-          setTimeout(() => {
-            if (!cancelled) {
-              e.target.unMute?.();
-              e.target.setVolume?.(100);
-            }
-          }, 300);
-        },
-      },
+  // ── YouTube: build iframe src whenever the story changes
+  useEffect(() => {
+    const videoId =
+      story.youtube_video_id ??
+      (story.youtube_url ? extractVideoId(story.youtube_url) : null);
+    if (!videoId) { setYtSrc(null); return; }
+    const startSec = story.youtube_start_sec ?? 0;
+    const params = new URLSearchParams({
+      autoplay: '1',
+      controls: '0',
+      loop: '1',
+      playlist: videoId,
+      start: String(Math.floor(startSec)),
+      rel: '0',
+      modestbranding: '1',
+      playsinline: '1',
     });
-    ytPlayerRef.current = player;
-  }).catch(() => undefined);
-
-  return () => {
-    cancelled = true;
-    try { if (mountEl.parentNode) mountEl.parentNode.removeChild(mountEl); } catch { /* ignore */ }
-    try { player?.destroy(); } catch { /* ignore */ }
-    ytPlayerRef.current = null;
-  };
-}, [story.youtube_video_id, story.youtube_url, story.youtube_start_sec]);
-//  ^^^ depend on the new fields so it re-initialises when index changes
+    setYtSrc(`https://www.youtube.com/embed/${videoId}?${params}`);
+    return () => setYtSrc(null);
+  }, [index, story.youtube_video_id, story.youtube_url, story.youtube_start_sec]);
 
   const goTo = (newIndex: number) => {
     if (newIndex < 0 || newIndex >= stories.length) return;
@@ -325,13 +260,17 @@ useEffect(() => {
   </div>
 )}
 
-        {/* YT container — kept in DOM so player mounts correctly */}
-        <div
-          ref={ytContainerRef}
-          aria-hidden="true"
-          className="absolute pointer-events-none"
-          style={{ width: 1, height: 1, opacity: 0, left: -9999, top: 0 }}
-        />
+        {/* YouTube iframe — rendered directly so browser autoplay policy honours the opening click */}
+        {ytSrc && (
+          <iframe
+            key={ytSrc}
+            src={ytSrc}
+            aria-hidden="true"
+            allow="autoplay; encrypted-media"
+            className="absolute pointer-events-none"
+            style={{ width: 1, height: 1, opacity: 0, left: -9999, top: 0, border: 0 }}
+          />
+        )}
       </div>
     </div>,
     document.body
