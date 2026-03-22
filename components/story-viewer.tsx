@@ -101,7 +101,12 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
 
   const isOwnStory = story?.user_id === currentUserId;
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   // ── Progress bar
   useEffect(() => {

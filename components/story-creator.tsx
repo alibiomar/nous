@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Camera, CameraOff, Check, ChevronRight, Music,
+  CameraOff, Check, ChevronRight, Music,
   Pen, RotateCcw, Search, SwitchCamera, Type, Upload, X,
   Sparkles, AlignCenter, Trash2, Clock, Loader2,
 } from 'lucide-react';
@@ -41,8 +41,8 @@ interface MusicSelection {
   title:       string;
   channel:     string;
   thumbnail:   string;
-  startSec:    number; // clip always plays [startSec, startSec+30]
-  durationSec: number; // full song duration
+  startSec:    number;
+  durationSec: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,7 +74,6 @@ async function flattenToBlob(
   overlayCanvas: HTMLCanvasElement,
   textItems: TextItem[],
 ): Promise<Blob> {
-  // Always output 9:16 — crop-center the media and overlay
   const TARGET_RATIO = 9 / 16;
   const stageW = overlayCanvas.width;
   const stageH = overlayCanvas.height;
@@ -93,7 +92,6 @@ async function flattenToBlob(
   const offsetX = Math.round((stageW - outW) / 2);
   const offsetY = Math.round((stageH - outH) / 2);
  
-  // Draw media cropped to 9:16
   const mW = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoWidth  : (mediaEl as HTMLImageElement).naturalWidth;
   const mH = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoHeight : (mediaEl as HTMLImageElement).naturalHeight;
   let sx = 0, sy = 0, sw = mW, sh = mH;
@@ -101,10 +99,8 @@ async function flattenToBlob(
   else { sh = Math.round(mW / TARGET_RATIO); sy = Math.round((mH - sh) / 2); }
   ctx.drawImage(mediaEl, sx, sy, sw, sh, 0, 0, outW, outH);
  
-  // Draw strokes (crop-centered from overlay)
   ctx.drawImage(overlayCanvas, offsetX, offsetY, outW, outH, 0, 0, outW, outH);
  
-  // Draw text — remap from stage coords to output coords
   for (const item of textItems) {
     ctx.save();
     ctx.translate(item.x * stageW - offsetX, item.y * stageH - offsetY);
@@ -137,12 +133,9 @@ function fmtSec(s: number) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Singleton YouTube player — one persistent DOM node that React never touches.
-// We keep the iframe container in a <div> appended directly to document.body
-// so React's reconciler can never try to removeChild it.
+// Singleton YouTube player
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Module-level singletons — survive across re-renders / remounts
 let _ytContainer:  HTMLDivElement | null = null;
 let _ytPlayer:     any = null;
 let _ytReady       = false;
@@ -190,12 +183,10 @@ function ytLoad(videoId: string, startSec: number) {
   const doLoad = () => {
     if (!_ytContainer) return;
     if (_ytPlayer) {
-      // Reuse the existing player — just load a new video
       try {
         _ytPlayer.loadVideoById({ videoId, startSeconds: startSec });
-      } catch { /* player not ready yet — pending vars already set */ }
+      } catch {}
     } else {
-      // Create inner div that YT API will replace with an iframe
       const div = document.createElement('div');
       _ytContainer.appendChild(div);
       _ytPlayer = new (window as any).YT.Player(div, {
@@ -227,7 +218,7 @@ function ytStop() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MusicPanel — search + result cards + locked-30s window picker + preview
+// MusicPanel
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MusicPanel({
@@ -247,10 +238,8 @@ function MusicPanel({
   const [previewing, setPreviewing] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stop preview when panel unmounts
   useEffect(() => () => { ytStop(); }, []);
 
-  // Pre-fill existing selection
   useEffect(() => {
     if (selection) {
       setPicked({ videoId: selection.videoId, title: selection.title, channelTitle: selection.channel, thumbnail: selection.thumbnail, durationSec: selection.durationSec });
@@ -258,7 +247,6 @@ function MusicPanel({
     }
   }, []); // eslint-disable-line
 
-  // Debounced search
   const handleQueryChange = (val: string) => {
     setQuery(val); setSearchErr('');
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -286,17 +274,13 @@ function MusicPanel({
   };
 
   const dur      = picked?.durationSec ?? 0;
-  // Max start so the 30s window fits: if song shorter than 30s, lock to 0
   const maxStart = Math.max(0, dur - 30);
   const endSec   = Math.min(startSec + 30, dur > 0 ? dur : startSec + 30);
-  // Window width as % of total bar
   const windowPct = dur > 0 ? (30 / dur) * 100 : 100;
   const startPct  = dur > 0 ? (startSec / dur) * 100 : 0;
 
   return (
     <div className="space-y-4 relative">
-
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="rounded-xl border border-border/60 bg-primary/10 p-2">
@@ -313,7 +297,6 @@ function MusicPanel({
         </button>
       </div>
 
-      {/* Search input */}
       {!picked && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -326,7 +309,6 @@ function MusicPanel({
 
       {searchErr && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{searchErr}</p>}
 
-      {/* Results list */}
       {results.length > 0 && !picked && (
         <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5" style={{ scrollbarWidth: 'thin' }}>
           {results.map(v => (
@@ -346,10 +328,8 @@ function MusicPanel({
         </div>
       )}
 
-      {/* Picked: card + 30s window slider */}
       {picked && (
         <div className="space-y-4">
-          {/* Selected card */}
           <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/8 p-2.5">
             {picked.thumbnail
               ? <img src={picked.thumbnail} alt="" className="h-11 w-18 rounded-xl object-cover shrink-0" />
@@ -366,7 +346,6 @@ function MusicPanel({
             </button>
           </div>
 
-          {/* 30-second window picker */}
           <div className="rounded-2xl border border-border/60 bg-background/50 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -378,28 +357,22 @@ function MusicPanel({
               </span>
             </div>
 
-            {/* Visual timeline bar */}
             <div className="relative h-5 flex items-center">
-              {/* Full track */}
               <div className="absolute inset-x-0 h-1.5 rounded-full bg-muted/60" />
-              {/* 30s window highlight */}
               <div
                 className="absolute h-1.5 rounded-full bg-primary/70"
                 style={{ left: `${startPct}%`, width: `${Math.min(windowPct, 100 - startPct)}%` }}
               />
-              {/* Start tick */}
               <div
                 className="absolute w-3 h-3 rounded-full bg-primary border-2 border-background shadow -translate-x-1/2 cursor-pointer"
                 style={{ left: `${startPct}%` }}
               />
-              {/* End tick (read-only) */}
               <div
                 className="absolute w-2.5 h-2.5 rounded-full bg-primary/50 border-2 border-background shadow -translate-x-1/2"
                 style={{ left: `${Math.min(startPct + windowPct, 100)}%` }}
               />
             </div>
 
-            {/* Slider — only moves start; end = start+30 always */}
             <input
               type="range"
               min={0}
@@ -416,11 +389,10 @@ function MusicPanel({
             />
             <div className="flex justify-between text-[10px] text-muted-foreground/55">
               <span>0:00</span>
-              <span className="text-muted-foreground/70 font-medium">Drag to choose start ·  end auto-locks at +30s</span>
+              <span className="text-muted-foreground/70 font-medium">Drag to choose start · end auto-locks at +30s</span>
               <span>{dur > 0 ? fmtSec(dur) : '?'}</span>
             </div>
 
-            {/* Preview toggle */}
             <button
               type="button"
               onClick={() => {
@@ -445,7 +417,6 @@ function MusicPanel({
             </button>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2">
             {selection && (
               <button type="button" onClick={onClear}
@@ -461,7 +432,6 @@ function MusicPanel({
         </div>
       )}
 
-      {/* Empty hint */}
       {!picked && results.length === 0 && !searching && !searchErr && (
         <div className="text-center py-6">
           <Music className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
@@ -488,7 +458,6 @@ interface TextLabelProps {
 function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange }: TextLabelProps) {
   const elRef = useRef<HTMLSpanElement | null>(null);
 
-  // PC / stylus: pointer events via React
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
     if (e.pointerType === 'touch') return;
     e.preventDefault(); e.stopPropagation();
@@ -512,7 +481,6 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
     window.addEventListener('pointerup', onUp);
   }, [item.id, item.x, item.y, onChange, onActivate, onDeactivate, stageRef]);
 
-  // Mobile: native touch for single-drag + pinch/rotate
   useEffect(() => {
     const el = elRef.current; const stage = stageRef.current;
     if (!el || !stage) return;
@@ -630,6 +598,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('environment');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording]   = useState(false);
+  const [cameraError, setCameraError]   = useState(false);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
   const recordChunks   = useRef<Blob[]>([]);
@@ -668,7 +637,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [isPosting, setIsPosting]   = useState(false);
   const [uploadStep, setUploadStep] = useState('');
   const [postError, setPostError]   = useState('');
-  // Autoplay: start/stop based on selection + panel visibility
+
   useEffect(() => {
     if (musicSelection && panel === 'none' && mediaPreview) {
       ytLoad(musicSelection.videoId, musicSelection.startSec);
@@ -677,8 +646,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [musicSelection?.videoId, musicSelection?.startSec, panel, mediaPreview]);
-
-
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -691,7 +658,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   // ── Reset ──────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     cameraStream?.getTracks().forEach(t => t.stop());
-    setCameraStream(null); setCameraActive(false);
+    setCameraStream(null); setCameraActive(false); setCameraError(false);
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaFile(null); setMediaPreview(null); setMediaKind('image');
     setVideoDuration(0); setStartOffset(0);
@@ -710,6 +677,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, [cameraStream]);
 
   const startCamera = useCallback(async () => {
+    setCameraError(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: cameraFacing }, width: { ideal: 1080 }, height: { ideal: 1920 } },
@@ -720,13 +688,24 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         cameraVideoRef.current.srcObject = stream;
         await cameraVideoRef.current.play();
       }
-    } catch {}
+    } catch {
+      setCameraError(true);
+    }
   }, [cameraFacing]);
 
   const flipCamera = useCallback(() => {
     stopCamera(); setCameraFacing(f => f === 'user' ? 'environment' : 'user');
   }, [stopCamera]);
 
+  // ── Auto-start camera when component opens (no media loaded yet) ────────────
+  useEffect(() => {
+    if (open && !mediaPreview) {
+      startCamera();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Restart camera when facing direction changes
   useEffect(() => { if (cameraActive) startCamera(); }, [cameraFacing]);
 
   const capturePhoto = useCallback(() => {
@@ -783,7 +762,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
 
   useEffect(() => { if (mediaPreview) setTimeout(initCanvas, 50); }, [mediaPreview, initCanvas]);
 
-  // Smooth drawing via native pointer events
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas || !mediaPreview) return;
     const ctx = canvas.getContext('2d')!;
@@ -831,7 +809,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     };
   }, [mediaPreview]);
 
-  // Undo snapshot capture
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas || !mediaPreview) return;
     const onDown = () => {
@@ -940,89 +917,102 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         transition: 'opacity 0.25s ease, transform 0.42s cubic-bezier(0.32,0.72,0,1)',
       }}
     >
-      {/* ══════════════════ PICK SCREEN ══════════════════ */}
+      {/* ══════════════════ CAMERA SCREEN (shown when no media selected yet) ══════════════════ */}
       {!hasMedia && (
-        <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between px-4 pt-14 pb-1">
-            <button type="button" onClick={onClose}
-              className="rounded-full p-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors">
+        <div className="relative flex flex-col h-full bg-black">
+
+          {/* Camera viewfinder — full screen */}
+          <video
+            ref={cameraVideoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            autoPlay
+            playsInline
+            muted
+          />
+
+          {/* Dim overlay when camera failed */}
+          {cameraError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3 z-10">
+              <CameraOff className="h-10 w-10 text-white/40" />
+              <p className="text-sm text-white/50">Camera unavailable</p>
+            </div>
+          )}
+
+          {/* Gradient overlays */}
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-black/40 z-10" />
+
+          {/* ── TOP: close + flip ── */}
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 pt-12 pb-4 z-20">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/20 bg-black/40 p-2.5 text-white backdrop-blur-sm"
+            >
               <X className="h-5 w-5" />
             </button>
-            <h1 className="font-serif text-xl font-semibold text-foreground tracking-tight">New Story</h1>
-            <div className="w-9" />
-          </div>
 
-          <div className="relative flex-1 mx-4 mt-4 overflow-hidden rounded-3xl border border-border/70">
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/20 blur-3xl z-10" />
-            <div className="pointer-events-none absolute -bottom-8 left-4 h-24 w-24 rounded-full bg-secondary/60 blur-2xl z-10" />
-            {cameraActive ? (
-              <>
-                <video ref={cameraVideoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
-                <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent" />
-                {isRecording && (
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-destructive/85 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
-                    <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />REC
-                  </div>
-                )}
-                <button type="button" onClick={flipCamera}
-                  className="absolute right-3 top-3 rounded-full border border-white/25 bg-black/40 p-2 text-white backdrop-blur-sm hover:bg-black/60 transition-colors">
-                  <SwitchCamera className="h-4 w-4" />
-                </button>
-              </>
-            ) : (
-              <div className="flex h-full min-h-52 flex-col items-center justify-center gap-3 bg-muted/20">
-                <div className="rounded-full border border-border/60 bg-background/70 p-5 backdrop-blur-sm">
-                  <Camera className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <p className="text-sm text-muted-foreground">Camera preview</p>
+            {isRecording && (
+              <div className="flex items-center gap-1.5 rounded-full bg-destructive/85 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                REC
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={flipCamera}
+              className="rounded-full border border-white/20 bg-black/40 p-2.5 text-white backdrop-blur-sm"
+            >
+              <SwitchCamera className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="px-4 pt-4 pb-10 space-y-3">
-            {cameraActive ? (
-              <div className="flex items-center justify-center gap-7">
-                <button type="button" onClick={stopCamera}
-                  className="rounded-full border border-border/70 bg-background/80 p-2.5 text-muted-foreground hover:bg-muted/60 transition-colors">
-                  <CameraOff className="h-4 w-4" />
-                </button>
-                <button type="button"
-                  onPointerDown={() => { if (!isRecording) startRecording(); }}
-                  onPointerUp={() => { if (isRecording) stopRecording(); }}
-                  onClick={capturePhoto}
-                  className={['h-16 w-16 rounded-full border-4 transition-all duration-150 flex items-center justify-center',
-                    isRecording ? 'border-destructive/80 bg-destructive/20 scale-95' : 'border-foreground/70 bg-foreground/10'].join(' ')}>
-                  {!isRecording && <div className="h-12 w-12 rounded-full bg-foreground/85" />}
-                  {isRecording  && <div className="h-5 w-5 rounded-md bg-destructive" />}
-                </button>
-                <div className="w-10" />
-              </div>
-            ) : (
-              <>
-                <button type="button" onClick={startCamera}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors">
-                  <div className="rounded-xl border border-border/60 bg-primary/10 p-2"><Camera className="h-4 w-4 text-primary" /></div>
-                  <span className="font-medium">Open Camera</span>
-                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                </button>
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-border/50" />
-                  <span className="text-xs text-muted-foreground">or</span>
-                  <div className="h-px flex-1 bg-border/50" />
+          {/* ── BOTTOM: upload (left) + shutter (center) ── */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-8 pb-14 pt-6 z-20">
+
+            {/* Gallery / upload button — bottom left */}
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) { stopCamera(); loadMedia(f); }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center gap-1.5"
+              >
+                <div className="rounded-2xl border-2 border-white/30 bg-black/40 p-3 backdrop-blur-sm hover:bg-black/60 transition-colors">
+                  <Upload className="h-5 w-5 text-white" />
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) loadMedia(f); }} />
-                <button type="button" onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors">
-                  <div className="rounded-xl border border-border/60 bg-primary/10 p-2"><Upload className="h-4 w-4 text-primary" /></div>
-                  <div className="text-left">
-                    <div className="font-medium">Choose from library</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Photo or video</div>
-                  </div>
-                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                </button>
-              </>
-            )}
+                <span className="text-[10px] text-white/55 font-medium">Gallery</span>
+              </button>
+            </>
+
+            {/* Shutter button — center */}
+            <button
+              type="button"
+              onPointerDown={() => { if (!isRecording && cameraActive) startRecording(); }}
+              onPointerUp={() => { if (isRecording) stopRecording(); }}
+              onClick={() => { if (cameraActive && !isRecording) capturePhoto(); }}
+              className={[
+                'h-20 w-20 rounded-full border-4 transition-all duration-150 flex items-center justify-center',
+                isRecording
+                  ? 'border-destructive/80 bg-destructive/20 scale-95'
+                  : 'border-white/80 bg-white/10',
+              ].join(' ')}
+            >
+              {!isRecording && <div className="h-14 w-14 rounded-full bg-white/90" />}
+              {isRecording  && <div className="h-6 w-6 rounded-md bg-destructive" />}
+            </button>
+
+            {/* Right spacer — keeps shutter centered */}
+            <div className="w-14" />
           </div>
         </div>
       )}
