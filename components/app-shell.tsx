@@ -13,11 +13,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SwipeNavigator
-      onFeedSwipeLeft={isOnFeed ? () => setStoryCreatorOpen(true) : undefined}
+      onFeedSwipeRight ={isOnFeed ? () => setStoryCreatorOpen(true) : undefined}
     >
       {children}
 
-      {/* Story creator — triggered by swipe left on feed */}
+      {/* Story creator — triggered by swipe right on feed */}
       <StoryCreator
         open={storyCreatorOpen}
         onClose={() => setStoryCreatorOpen(false)}

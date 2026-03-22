@@ -70,31 +70,57 @@ async function compressImage(file: File): Promise<File> {
 }
 
 async function flattenToBlob(
-  media: HTMLImageElement | HTMLVideoElement,
-  overlay: HTMLCanvasElement,
-  items: TextItem[],
+  mediaEl: HTMLImageElement | HTMLVideoElement,
+  overlayCanvas: HTMLCanvasElement,
+  textItems: TextItem[],
 ): Promise<Blob> {
-  const w = overlay.width, h = overlay.height;
+  // Always output 9:16 — crop-center the media and overlay
+  const TARGET_RATIO = 9 / 16;
+  const stageW = overlayCanvas.width;
+  const stageH = overlayCanvas.height;
+ 
+  let outW: number, outH: number;
+  if (stageW / stageH > TARGET_RATIO) {
+    outH = stageH; outW = Math.round(outH * TARGET_RATIO);
+  } else {
+    outW = stageW; outH = Math.round(outW / TARGET_RATIO);
+  }
+ 
   const out = document.createElement('canvas');
-  out.width = w; out.height = h;
+  out.width = outW; out.height = outH;
   const ctx = out.getContext('2d')!;
-  ctx.drawImage(media, 0, 0, w, h);
-  ctx.drawImage(overlay, 0, 0);
-  for (const it of items) {
+ 
+  const offsetX = Math.round((stageW - outW) / 2);
+  const offsetY = Math.round((stageH - outH) / 2);
+ 
+  // Draw media cropped to 9:16
+  const mW = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoWidth  : (mediaEl as HTMLImageElement).naturalWidth;
+  const mH = (mediaEl instanceof HTMLVideoElement) ? mediaEl.videoHeight : (mediaEl as HTMLImageElement).naturalHeight;
+  let sx = 0, sy = 0, sw = mW, sh = mH;
+  if (mW / mH > TARGET_RATIO) { sw = Math.round(mH * TARGET_RATIO); sx = Math.round((mW - sw) / 2); }
+  else { sh = Math.round(mW / TARGET_RATIO); sy = Math.round((mH - sh) / 2); }
+  ctx.drawImage(mediaEl, sx, sy, sw, sh, 0, 0, outW, outH);
+ 
+  // Draw strokes (crop-centered from overlay)
+  ctx.drawImage(overlayCanvas, offsetX, offsetY, outW, outH, 0, 0, outW, outH);
+ 
+  // Draw text — remap from stage coords to output coords
+  for (const item of textItems) {
     ctx.save();
-    ctx.translate(it.x * w, it.y * h);
-    ctx.rotate((it.rotate * Math.PI) / 180);
-    ctx.scale(it.scale, it.scale);
-    ctx.font = `bold ${it.size}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3;
-    ctx.strokeText(it.text, 0, 0);
-    ctx.fillStyle = it.color;
-    ctx.fillText(it.text, 0, 0);
+    ctx.translate(item.x * stageW - offsetX, item.y * stageH - offsetY);
+    ctx.font      = `bold ${item.size}px sans-serif`;
+    ctx.fillStyle = item.color;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth   = 3;
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText(item.text, 0, 0);
+    ctx.fillText(item.text, 0, 0);
     ctx.restore();
   }
+ 
   return new Promise((res, rej) =>
-    out.toBlob(b => b ? res(b) : rej(new Error('empty')), 'image/jpeg', COMPRESS_QUALITY)
+    out.toBlob((b) => b ? res(b) : rej(new Error('Canvas empty')), 'image/jpeg', COMPRESS_QUALITY)
   );
 }
 

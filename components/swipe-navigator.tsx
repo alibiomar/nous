@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
 // ── Page order ────────────────────────────────────────────────────────────────
-// Circular: feed → messages → media → cinema → feed (wraps)
+// Circular: feed → messages → music → cinema → feed (wraps)
 // Swipe left on feed = open story creator (special case, no navigation)
-const PAGE_ORDER = ['/feed', '/messages', '/media', '/cinema'];
+const PAGE_ORDER = ['/feed', '/messages', '/music', '/cinema'];
 
 const SWIPE_THRESHOLD    = 60;   // px minimum horizontal travel
 const SWIPE_MAX_VERTICAL = 80;   // px — reject if too vertical (scrolling)
@@ -14,10 +14,10 @@ const SWIPE_MIN_VELOCITY = 0.3;  // px/ms
 
 interface SwipeNavigatorProps {
   children: React.ReactNode;
-  onFeedSwipeLeft?: () => void; // opens story creator instead of navigating
+  onFeedSwipeRight ?: () => void; // opens story creator instead of navigating
 }
 
-export function SwipeNavigator({ children, onFeedSwipeLeft }: SwipeNavigatorProps) {
+export function SwipeNavigator({ children, onFeedSwipeRight  }: SwipeNavigatorProps) {
   const router   = useRouter();
   const pathname = usePathname();
 
@@ -49,14 +49,14 @@ export function SwipeNavigator({ children, onFeedSwipeLeft }: SwipeNavigatorProp
     if (absDx < absDy * 1.5)         return; // not horizontal enough
 
     const idx       = getCurrentIndex();
-    const swipeLeft = dx < 0;
+    const swipeRight  = dx > 0;
     const isOnFeed  = pathname.startsWith('/feed');
 
-    if (swipeLeft) {
-      // ── Swipe left: forward ───────────────────────────────────────────────
-      if (isOnFeed && onFeedSwipeLeft) {
+    if (swipeRight) {
+      // ── Swipe right: forward ───────────────────────────────────────────────
+      if (isOnFeed && onFeedSwipeRight ) {
         // Special case: open story creator instead of navigating
-        onFeedSwipeLeft();
+        onFeedSwipeRight ();
         return;
       }
       // Circular: last page wraps back to first
@@ -67,7 +67,7 @@ export function SwipeNavigator({ children, onFeedSwipeLeft }: SwipeNavigatorProp
       const prev = idx <= 0 ? PAGE_ORDER.length - 1 : idx - 1;
       router.push(PAGE_ORDER[prev]);
     }
-  }, [getCurrentIndex, onFeedSwipeLeft, pathname, router]);
+  }, [getCurrentIndex, onFeedSwipeRight , pathname, router]);
 
   useEffect(() => {
     const el = document.documentElement;

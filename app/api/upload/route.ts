@@ -18,10 +18,9 @@ function createCloudinarySignature(params: Record<string, string>, apiSecret: st
 // ── Cloudinary URL transformations (no SDK needed) ───────────────────────────
 
 function applyImageTransformations(url: string): string {
-  // Insert transformation segment: auto quality, auto format, max width 1080
-  // e.g. https://res.cloudinary.com/{cloud}/image/upload/v123/nous/file.jpg
-  //   →  https://res.cloudinary.com/{cloud}/image/upload/q_auto,f_auto,w_1080/v123/nous/file.jpg
-  return url.replace('/image/upload/', '/image/upload/q_auto,f_auto,w_1080/');
+  // 9:16 crop + auto quality + auto format + max width 1080
+  // ar_9:16 with c_fill crops to portrait centered
+  return url.replace('/image/upload/', '/image/upload/ar_9:16,c_fill,w_1080,q_auto,f_auto/');
 }
 
 function applyVideoTransformations(url: string, startOffset: number): string {
