@@ -48,7 +48,8 @@ export async function GET() {
         image_url, image_public_id,
         video_url, video_public_id,
         media_type, caption,
-        youtube_url, youtube_title,
+        youtube_url, youtube_video_id, youtube_title,
+        youtube_start_sec, youtube_end_sec,
         created_at, expires_at
       `)
       .gt('expires_at', new Date().toISOString())
@@ -94,7 +95,8 @@ export async function POST(request: NextRequest) {
       image_url, image_public_id,
       video_url, video_public_id,
       media_type, caption,
-      youtube_url, youtube_title,
+      youtube_url, youtube_video_id, youtube_title,
+      youtube_start_sec, youtube_end_sec,
     } = body;
 
     if (!image_url) {
@@ -112,7 +114,10 @@ export async function POST(request: NextRequest) {
         media_type: media_type ?? 'image',
         caption: caption?.trim() || null,
         youtube_url: youtube_url ?? null,
+        youtube_video_id: youtube_video_id ?? null,
         youtube_title: youtube_title?.trim() || null,
+        youtube_start_sec: youtube_start_sec ?? null,
+        youtube_end_sec: youtube_end_sec ?? null,
       })
       .select()
       .single();

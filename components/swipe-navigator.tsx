@@ -9,7 +9,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const PAGE_ORDER = ['/feed', '/messages', '/music', '/cinema'];
 
 const SWIPE_THRESHOLD    = 60;   // px minimum horizontal travel
-const SWIPE_MAX_VERTICAL = 80;   // px — reject if too vertical (scrolling)
+const SWIPE_MAX_VERTICAL = 100;   // px — reject if too vertical (scrolling)
 const SWIPE_MIN_VELOCITY = 0.3;  // px/ms
 
 interface SwipeNavigatorProps {
@@ -64,7 +64,7 @@ export function SwipeNavigator({ children, onFeedSwipeRight  }: SwipeNavigatorPr
       router.push(PAGE_ORDER[next]);
     } else {
       // ── Swipe right: backward (circular) ─────────────────────────────────
-      const prev = idx <= 0 ? PAGE_ORDER.length - 1 : idx - 1;
+      const prev = idx >= 0 ? PAGE_ORDER.length - 1 : idx - 1;
       router.push(PAGE_ORDER[prev]);
     }
   }, [getCurrentIndex, onFeedSwipeRight , pathname, router]);
