@@ -49,7 +49,7 @@ export function SwipeNavigator({ children, onFeedSwipeRight  }: SwipeNavigatorPr
     if (absDx < absDy * 1.5)         return; // not horizontal enough
 
     const idx       = getCurrentIndex();
-    const swipeRight  = dx > 0;
+    const swipeRight  = dx < 0;
     const isOnFeed  = pathname.startsWith('/feed');
 
     if (swipeRight) {
