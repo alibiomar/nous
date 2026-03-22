@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { SwipeNavigator } from '@/components/swipe-navigator';
-import { StoryCreator } from '@/components/story-creator';
+
+const StoryCreator = dynamic(() => import('@/components/story-creator').then((m) => m.StoryCreator), { ssr: false })
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,10 +20,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {children}
 
       {/* Story creator — triggered by swipe right on feed */}
-      <StoryCreator
-        open={storyCreatorOpen}
-        onClose={() => setStoryCreatorOpen(false)}
-      />
+      {storyCreatorOpen && (
+        <StoryCreator
+          open={storyCreatorOpen}
+          onClose={() => setStoryCreatorOpen(false)}
+        />
+      )}
     </SwipeNavigator>
   );
 }
