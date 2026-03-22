@@ -12,7 +12,10 @@ interface Story {
   media_type: 'image' | 'video';
   caption: string | null;
   youtube_url: string | null;
+  youtube_video_id: string | null;
   youtube_title: string | null;
+  youtube_start_sec: number | null;
+  youtube_end_sec: number | null;
   created_at: string;
   expires_at: string;
   author: { id: string; name: string; avatar_url: string | null };
@@ -52,14 +55,28 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   const authorIds = Object.keys(grouped).sort((a) => (a === currentUserId ? 1 : -1));
 
   const openStories = (authorId: string) => {
-    // Find index of first story by this author in the flat list
     const idx = stories.findIndex((s) => s.user_id === authorId);
     if (idx === -1) return;
     setViewerIndex(idx);
-    // Mark as seen
     setSeenIds((prev) => {
       const next = new Set(prev);
       grouped[authorId].forEach((s) => next.add(s.id));
+      return next;
+    });
+  };
+
+  const handleDelete = (storyId: string) => {
+    setStories((prev) => {
+      const next = prev.filter((s) => s.id !== storyId);
+      // Adjust viewer index: if the deleted story was before or at the current index, shift back
+      setViewerIndex((idx) => {
+        if (idx === null) return null;
+        const deletedAt = prev.findIndex((s) => s.id === storyId);
+        if (next.length === 0) return null;
+        if (deletedAt < idx) return idx - 1;
+        if (deletedAt === idx) return Math.min(idx, next.length - 1);
+        return idx;
+      });
       return next;
     });
   };
@@ -127,7 +144,9 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
         <StoryViewer
           stories={stories}
           initialIndex={viewerIndex}
+          currentUserId={currentUserId}
           onClose={() => setViewerIndex(null)}
+          onDelete={handleDelete}
         />
       )}
     </>
