@@ -12,27 +12,43 @@ self.addEventListener('push', (event) => {
   }
 
   const body = data.body ?? '';
+  // Use the url the server explicitly sent — this is the source of truth
+  const targetUrl = data.url ?? '/messages';
 
-  // ── Detect notification type from message content ─────────────────────────
-  const isCall   = body.includes('calling you') || body.includes('📞');
-  const isCinema = body.includes('played') || body.includes('paused') || body.includes('🎬');
-  // anything else is a chat message
+  // ── Detect type from body content ─────────────────────────────────────────
+  const isCall    = body.includes('calling you') || body.includes('📞');
+  const isCinema  = body.includes('played') || body.includes('paused') || body.includes('🎬');
+  const isStory   = body.includes('story') || body.includes('✨');
+  const isFeed    = body.includes('photo') || body.includes('moment') || body.includes('posted a');
+  // fallback: chat message
 
-  const url = data.url ?? (isCinema ? '/cinema' : '/messages');
+  const tag = isCall
+    ? 'call-invite'
+    : isCinema
+    ? 'cinema-sync'
+    : isStory
+    ? 'story-posted'
+    : isFeed
+    ? 'feed-post'
+    : 'chat-message';
 
-  // Each type gets its own tag so they don't collapse each other
-  const tag   = isCall ? 'call-invite' : isCinema ? 'cinema-sync' : 'chat-message';
-  const title = isCall ? '📞 Incoming call' : isCinema ? '🎬 Cinema sync' : '💬 New message';
+  const title = isCall
+    ? '📞 Incoming call'
+    : isCinema
+    ? '🎬 Cinema sync'
+    : isStory
+    ? '✨ New story'
+    : isFeed
+    ? '📸 New moment'
+    : '💬 New message';
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon: '/animated_heart_icon.svg',
       badge: '/animated_heart_icon.svg',
-      data: { url },
-      // Longer vibrate pattern for calls to feel more urgent
+      data: { url: targetUrl },
       vibrate: isCall ? [200, 100, 200, 100, 200] : [100, 50, 100],
-      // Keep call notifications visible until the user explicitly dismisses them
       requireInteraction: isCall,
       tag,
       renotify: true,
@@ -43,21 +59,20 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const url   = event.notification.data?.url ?? '/messages';
-  const tag   = event.notification.tag;
-
-  // Determine which path to look for when focusing an existing tab
-  const targetPath = tag === 'cinema-sync' ? '/cinema' : '/messages';
+  // Always use the url embedded in the notification data — never guess
+  const url = event.notification.data?.url ?? '/messages';
 
   event.waitUntil(
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
+        // Focus an existing tab whose URL contains the target path
         for (const client of clientList) {
-          if (client.url.includes(targetPath) && 'focus' in client) {
+          if (client.url.includes(url) && 'focus' in client) {
             return client.focus();
           }
         }
+        // No matching tab open — open a new one
         return clients.openWindow(url);
       })
   );

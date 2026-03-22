@@ -2,7 +2,9 @@ import { createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;   // 5 MB
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024;  // 50 MB
+const MAX_VIDEO_DURATION = 30;             // seconds — enforced via Cloudinary transformation
 
 function createCloudinarySignature(params: Record<string, string>, apiSecret: string) {
   const sortedParams = Object.keys(params)
@@ -33,27 +35,42 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = formData.get('file');
+    // Optional: start offset for video trimming (seconds)
+    const startOffsetRaw = formData.get('startOffset');
+    const startOffset = startOffsetRaw ? parseFloat(startOffsetRaw as string) : 0;
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: 'Image file is required' }, { status: 400 });
+      return NextResponse.json({ error: 'File is required' }, { status: 400 });
     }
 
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'Only image files are allowed' }, { status: 400 });
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isImage && !isVideo) {
+      return NextResponse.json({ error: 'Only image or video files are allowed' }, { status: 400 });
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+    if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'Image must be smaller than 5MB' },
+        { error: `${isVideo ? 'Video' : 'Image'} must be smaller than ${maxSize / 1024 / 1024}MB` },
         { status: 400 }
       );
     }
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
+    const resourceType = isVideo ? 'video' : 'image';
+
     const uploadParams: Record<string, string> = {
       folder: 'nous',
       timestamp,
     };
+
+    // For videos: trim to 30s from the chosen start offset using Cloudinary transformations
+    if (isVideo) {
+      const endOffset = startOffset + MAX_VIDEO_DURATION;
+      uploadParams.transformation = `so_${startOffset.toFixed(1)},eo_${endOffset.toFixed(1)}`;
+    }
 
     const signature = createCloudinarySignature(uploadParams, apiSecret);
 
@@ -64,8 +81,13 @@ export async function POST(request: Request) {
     cloudinaryFormData.append('folder', 'nous');
     cloudinaryFormData.append('signature', signature);
 
+    if (isVideo) {
+      const endOffset = startOffset + MAX_VIDEO_DURATION;
+      cloudinaryFormData.append('transformation', `so_${startOffset.toFixed(1)},eo_${endOffset.toFixed(1)}`);
+    }
+
     const uploadResponse = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
       {
         method: 'POST',
         body: cloudinaryFormData,
@@ -79,9 +101,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    return NextResponse.json({ secureUrl: uploadResult.secure_url });
+    return NextResponse.json({
+      secureUrl: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+      resourceType,
+      duration: uploadResult.duration ?? null,
+    });
   } catch (error) {
     console.error('Upload route error:', error);
-    return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
   }
 }

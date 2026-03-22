@@ -69,7 +69,7 @@ export function usePushNotifications() {
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey).buffer as ArrayBuffer,
-        });
+      });
 
       subscriptionRef.current = subscription;
 
@@ -111,12 +111,12 @@ export function usePushNotifications() {
   }, []);
 
   // Send push notification to other users
-  const sendPushNotification = useCallback(async (message: string): Promise<void> => {
+  const sendPushNotification = useCallback(async (message: string, url?: string): Promise<void> => {
     try {
       await fetch('/api/push/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, url: url ?? '/cinema' }),
       });
     } catch {
       // non-fatal — toast already shown locally

@@ -18,3 +18,5 @@ node_modules/
 scripts/
 sw.js
 workbox-*.js
+
+*.*.backup

@@ -5,14 +5,14 @@ import { Clock3, Plus, Sparkles } from 'lucide-react';
 import { PhotoFeed } from '@/components/photo-feed';
 import { SharePhotoModal } from '@/components/share-photo-modal';
 import { StoriesBar } from '@/components/stories-bar';
-import { StoryCreator } from '@/components/story-creator';
+import { AddStoryModal } from '@/components/add-story-modal';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/user';
 
 export default function FeedPage() {
   const { user } = useUser();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [isStoryCreatorOpen, setIsStoryCreatorOpen] = useState(false);
+  const [isAddStoryOpen, setIsAddStoryOpen] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [storiesRefreshSignal, setStoriesRefreshSignal] = useState(0);
 
@@ -46,14 +46,14 @@ export default function FeedPage() {
         <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Stories</p>
         <StoriesBar
           currentUserId={user?.id ?? ''}
-          onAddStory={() => setIsStoryCreatorOpen(true)}
+          onAddStory={() => setIsAddStoryOpen(true)}
           refreshSignal={storiesRefreshSignal}
         />
       </section>
 
-      <StoryCreator
-        open={isStoryCreatorOpen}
-        onClose={() => setIsStoryCreatorOpen(false)}
+      <AddStoryModal
+        open={isAddStoryOpen}
+        onOpenChange={setIsAddStoryOpen}
         onPosted={() => setStoriesRefreshSignal((s) => s + 1)}
       />
 

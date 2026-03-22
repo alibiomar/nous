@@ -285,7 +285,6 @@ export const RealtimeChat = ({
       const messageData = {
         content: newMessage || null,
         imageUrl: uploadedImageUrl || null,
-          clientTimestamp: new Date().toISOString(),
       }
 
       // Send to backend for persistence
@@ -322,6 +321,7 @@ export const RealtimeChat = ({
           message: newMessage.trim()
             ? `${username}: ${newMessage.trim().slice(0, 100)}`
             : `${username} sent an image`,
+          url: '/messages',
         }),
       }).catch(() => undefined)
 

@@ -1,0 +1,275 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Music, X, ChevronLeft, ChevronRight } from 'lucide-react';
+
+interface Story {
+  id: string;
+  user_id: string;
+  image_url: string;
+  video_url: string | null;
+  media_type: 'image' | 'video';
+  caption: string | null;
+  youtube_url: string | null;
+  youtube_title: string | null;
+  created_at: string;
+  expires_at: string;
+  author: { id: string; name: string; avatar_url: string | null };
+}
+
+interface StoryViewerProps {
+  stories: Story[];
+  initialIndex: number;
+  onClose: () => void;
+}
+
+// ── YouTube IFrame API ────────────────────────────────────────────────────────
+interface YTPlayer {
+  destroy: () => void;
+  playVideo: () => void;
+  pauseVideo: () => void;
+}
+interface StoryYTNamespace {
+  Player: new (el: HTMLElement, opts: object) => YTPlayer;
+  PlayerState: { PLAYING: number };
+}
+
+let ytApiPromise: Promise<StoryYTNamespace> | null = null;
+function loadYT(): Promise<StoryYTNamespace> {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve, reject) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { prev?.(); window.YT?.Player ? resolve(window.YT as StoryYTNamespace) : reject(); };
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = () => reject();
+      document.body.appendChild(s);
+    }
+  });
+  return ytApiPromise;
+}
+
+function extractVideoId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtu.be')) return u.pathname.slice(1);
+    return u.searchParams.get('v');
+  } catch { return null; }
+}
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const h = Math.floor(diff / 3_600_000);
+  if (h < 1) return 'just now';
+  if (h === 1) return '1h ago';
+  return `${h}h ago`;
+}
+
+function expiresIn(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now();
+  const h = Math.ceil(diff / 3_600_000);
+  if (h <= 0) return 'expired';
+  if (h === 1) return '< 1h left';
+  return `${h}h left`;
+}
+
+export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps) {
+  const [index, setIndex] = useState(initialIndex);
+  const [progress, setProgress] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  const story = stories[index];
+
+  const ytContainerRef = useRef<HTMLDivElement | null>(null);
+  const ytPlayerRef = useRef<YTPlayer | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const durationMs = story.media_type === 'video' ? 30_000 : 8_000;
+
+  // Portal needs document to be available (client only)
+  useEffect(() => { setMounted(true); }, []);
+
+  // ── Progress bar ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    setProgress(0);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    const step = 100 / (durationMs / 100);
+    progressTimerRef.current = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 100) {
+          clearInterval(progressTimerRef.current!);
+          if (index < stories.length - 1) setIndex((i) => i + 1);
+          else onClose();
+          return 100;
+        }
+        return p + step;
+      });
+    }, 100);
+    return () => { if (progressTimerRef.current) clearInterval(progressTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  // ── YouTube autoplay ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!story.youtube_url || !ytContainerRef.current) return;
+    const videoId = extractVideoId(story.youtube_url);
+    if (!videoId) return;
+
+    let cancelled = false;
+    loadYT().then((YT: StoryYTNamespace) => {
+      if (cancelled || !ytContainerRef.current) return;
+      ytPlayerRef.current?.destroy();
+      ytPlayerRef.current = new YT.Player(ytContainerRef.current, {
+        videoId,
+        playerVars: { autoplay: 1, controls: 0, loop: 1, playlist: videoId, mute: 0 },
+        events: { onReady: (e: { target: YTPlayer }) => e.target.playVideo() },
+      });
+    }).catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      try { ytPlayerRef.current?.destroy(); } catch { /* ignore */ }
+      ytPlayerRef.current = null;
+    };
+  }, [story.youtube_url]);
+
+  const goTo = (newIndex: number) => {
+    if (newIndex < 0 || newIndex >= stories.length) return;
+    setIndex(newIndex);
+  };
+
+  // ── Keyboard nav ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight') goTo(index + 1);
+      if (e.key === 'ArrowLeft') goTo(index - 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/90 backdrop-blur-sm">
+      {/* Close */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
+      {/* Prev */}
+      {index > 0 && (
+        <button
+          type="button"
+          onClick={() => goTo(index - 1)}
+          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Next */}
+      {index < stories.length - 1 && (
+        <button
+          type="button"
+          onClick={() => goTo(index + 1)}
+          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Story card */}
+      <div className="relative mx-auto h-[90vh] w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl">
+
+        {/* Progress bars */}
+        <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 p-3">
+          {stories.map((_, i) => (
+            <div key={i} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
+              <div
+                className="h-full rounded-full bg-white transition-none"
+                style={{ width: i < index ? '100%' : i === index ? `${progress}%` : '0%' }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Author + time */}
+        <div className="absolute left-0 right-0 top-6 z-20 flex items-center gap-2.5 px-4 pt-2">
+          <div className="h-8 w-8 overflow-hidden rounded-full border border-white/40 bg-white/20">
+            {story.author.avatar_url ? (
+              <img src={story.author.avatar_url} alt={story.author.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
+                {story.author.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold text-white drop-shadow">{story.author.name}</span>
+            <span className="text-[10px] text-white/70">{timeAgo(story.created_at)} · {expiresIn(story.expires_at)}</span>
+          </div>
+        </div>
+
+        {/* Media */}
+        {story.media_type === 'video' && story.video_url ? (
+          <video
+            src={story.video_url}
+            className="h-full w-full object-cover"
+            autoPlay
+            playsInline
+            loop
+            muted={!!story.youtube_url}
+          />
+        ) : (
+          <img
+            src={story.image_url}
+            alt={story.caption ?? 'Story'}
+            className="h-full w-full object-cover"
+          />
+        )}
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
+
+        {/* Caption */}
+        {story.caption && (
+          <div className="absolute bottom-16 left-0 right-0 px-5">
+            <p className="text-center text-sm font-medium leading-relaxed text-white drop-shadow-lg">
+              {story.caption}
+            </p>
+          </div>
+        )}
+
+        {/* Song badge */}
+        {story.youtube_url && (
+          <div className="absolute bottom-5 left-0 right-0 flex justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+              <Music className="h-3 w-3 animate-pulse text-primary" />
+              <span className="text-xs text-white/90 truncate max-w-45">
+                {story.youtube_title ?? 'Playing music'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden YT player */}
+        {story.youtube_url && (
+          <div
+            ref={ytContainerRef}
+            className="absolute pointer-events-none"
+            style={{ width: 1, height: 1, opacity: 0, left: -9999 }}
+          />
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
