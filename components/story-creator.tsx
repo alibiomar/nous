@@ -81,7 +81,31 @@ async function flattenToBlob(
   out.width = outW; out.height = outH;
   const ctx = out.getContext('2d')!;
 
-  ctx.drawImage(mediaEl, 0, 0, outW, outH);
+  // Object-cover equivalent for canvas drawing
+  const mediaW = (mediaEl as HTMLVideoElement).videoWidth || (mediaEl as HTMLImageElement).naturalWidth;
+  const mediaH = (mediaEl as HTMLVideoElement).videoHeight || (mediaEl as HTMLImageElement).naturalHeight;
+
+  if (mediaW && mediaH) {
+    const imgRatio = mediaW / mediaH;
+    const canvasRatio = outW / outH;
+    let drawW, drawH, drawX = 0, drawY = 0;
+
+    if (imgRatio > canvasRatio) {
+      drawH = outH;
+      drawW = drawH * imgRatio;
+      drawX = (outW - drawW) / 2;
+    } else {
+      drawW = outW;
+      drawH = drawW / imgRatio;
+      drawY = (outH - drawH) / 2;
+    }
+    ctx.drawImage(mediaEl, drawX, drawY, drawW, drawH);
+  } else {
+    // Fallback if intrinsic dimensions fail
+    ctx.drawImage(mediaEl, 0, 0, outW, outH);
+  }
+
+  // Draw edits (pen + text overlays)
   ctx.drawImage(overlayCanvas, 0, 0, outW, outH);
 
   for (const item of textItems) {
@@ -596,7 +620,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [isRecording, setIsRecording]   = useState(false);
   const [cameraError, setCameraError]   = useState(false);
   const [isSelfie, setIsSelfie]         = useState(false);
-  const [isFromCamera, setIsFromCamera] = useState(false);
   
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
@@ -669,7 +692,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     setCameraActive(false); setCameraError(false);
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaFile(null); setMediaPreview(null); setMediaKind('image');
-    setVideoDuration(0); setStartOffset(0); setIsSelfie(false); setIsFromCamera(false);
+    setVideoDuration(0); setStartOffset(0); setIsSelfie(false);
     setTool('none'); setTextItems([]); setActiveText(''); setActiveItemId(null);
     setPanel('none'); setMusicSelection(null); ytStop();
     setCaption(''); setIsPosting(false); setUploadStep(''); setPostError('');
@@ -729,7 +752,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     c.toBlob(blob => {
       if (!blob) return;
       setIsSelfie(cameraFacing === 'user');
-      setIsFromCamera(true);
       stopCamera();
       loadMedia(new File([blob], 'capture.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.9);
@@ -742,7 +764,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     rec.ondataavailable = e => { if (e.data.size > 0) recordChunks.current.push(e.data); };
     rec.onstop = () => {
       const blob = new Blob(recordChunks.current, { type: 'video/webm' });
-      setIsFromCamera(true);
       stopCamera();
       loadMedia(new File([blob], 'capture.webm', { type: 'video/webm' }));
     };
@@ -1070,13 +1091,13 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
       {hasMedia && (
         <div
           ref={stageRef}
-          className="relative w-full h-full"
+          className="relative w-full h-full overflow-hidden"
           style={{ touchAction: tool === 'draw' ? 'none' : 'auto' }}
         >
           {/* Media */}
           {mediaKind === 'image'
-            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${isFromCamera ? 'object-contain' : 'object-cover'}`} />
-            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className={`absolute inset-0 h-full w-full ${isFromCamera ? 'object-contain' : 'object-cover'}`} />
+            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
+            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className="absolute inset-0 h-full w-full object-cover" />
           }
 
           {/* Draw canvas */}

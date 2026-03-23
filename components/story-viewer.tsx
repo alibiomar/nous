@@ -67,7 +67,6 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
   const [isDeleting, setIsDeleting] = useState(false);
   const story = stories[index];
 
-  const [ytSrc, setYtSrc] = useState<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationMs = story?.media_type === 'video' ? 30_000 : 8_000;
 
@@ -94,27 +93,6 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
     return () => { if (progressTimerRef.current) clearInterval(progressTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
-
-  // ── YouTube: build iframe src whenever the story changes
-  useEffect(() => {
-    const videoId =
-      story.youtube_video_id ??
-      (story.youtube_url ? extractVideoId(story.youtube_url) : null);
-    if (!videoId) { setYtSrc(null); return; }
-    const startSec = story.youtube_start_sec ?? 0;
-    const params = new URLSearchParams({
-      autoplay: '1',
-      controls: '0',
-      loop: '1',
-      playlist: videoId,
-      start: String(Math.floor(startSec)),
-      rel: '0',
-      modestbranding: '1',
-      playsinline: '1',
-    });
-    setYtSrc(`https://www.youtube.com/embed/${videoId}?${params}`);
-    return () => setYtSrc(null);
-  }, [index, story.youtube_video_id, story.youtube_url, story.youtube_start_sec]);
 
   const goTo = (newIndex: number) => {
     if (newIndex < 0 || newIndex >= stories.length) return;
@@ -161,23 +139,43 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
 
   if (!mounted || !story) return null;
 
+  // ── YouTube: derived synchronously during render
+  let ytSrc: string | null = null;
+  const videoId = story.youtube_video_id ?? (story.youtube_url ? extractVideoId(story.youtube_url) : null);
+  
+  if (videoId) {
+    const startSec = story.youtube_start_sec ?? 0;
+    const params = new URLSearchParams({
+      autoplay: '1',
+      controls: '0',
+      loop: '1',
+      playlist: videoId,
+      start: String(Math.floor(startSec)),
+      rel: '0',
+      modestbranding: '1',
+      playsinline: '1',
+    });
+    ytSrc = `https://www.youtube.com/embed/${videoId}?${params}`;
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-      <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
+      <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70 transition-colors">
         <X className="h-5 w-5" />
       </button>
       {index > 0 && (
-        <button type="button" onClick={() => goTo(index - 1)} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
+        <button type="button" onClick={() => goTo(index - 1)} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70 transition-colors">
           <ChevronLeft className="h-5 w-5" />
         </button>
       )}
       {index < stories.length - 1 && (
-        <button type="button" onClick={() => goTo(index + 1)} className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
+        <button type="button" onClick={() => goTo(index + 1)} className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70 transition-colors">
           <ChevronRight className="h-5 w-5" />
         </button>
       )}
 
-      <div className="relative mx-auto h-[90vh] w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl">
+      {/* Strict 9:16 aspect ratio so object-cover crops appropriately */}
+      <div className="relative mx-auto h-[90vh] aspect-9/16 overflow-hidden rounded-3xl shadow-2xl bg-black">
         {/* Progress bars */}
         <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 p-3">
           {stories.map((_, i) => (
@@ -236,9 +234,9 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
 
         {/* Media */}
         {story.media_type === 'video' && story.video_url ? (
-          <video src={story.video_url} className="h-full w-full object-cover" autoPlay playsInline loop muted={!!story.youtube_url} />
+          <video src={story.video_url} className="absolute inset-0 h-full w-full object-cover" autoPlay playsInline loop muted={!!story.youtube_url} />
         ) : (
-          <img src={story.image_url} alt={story.caption ?? 'Story'} className="h-full w-full object-cover" />
+          <img src={story.image_url} alt={story.caption ?? 'Story'} className="absolute inset-0 h-full w-full object-cover" />
         )}
 
         <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
@@ -250,15 +248,15 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
         )}
 
         {(story.youtube_video_id || story.youtube_url) && (
-  <div className="absolute bottom-5 left-0 right-0 flex justify-center">
-    <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
-      <Music className="h-3 w-3 animate-pulse text-primary" />
-      <span className="text-xs text-white/90 truncate max-w-45">
-        {story.youtube_title ?? 'Playing music'}
-      </span>
-    </div>
-  </div>
-)}
+          <div className="absolute bottom-5 left-0 right-0 flex justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+              <Music className="h-3 w-3 animate-pulse text-primary" />
+              <span className="text-xs text-white/90 truncate max-w-45">
+                {story.youtube_title ?? 'Playing music'}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* YouTube iframe — rendered directly so browser autoplay policy honours the opening click */}
         {ytSrc && (
