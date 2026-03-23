@@ -5,7 +5,6 @@ import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
 import { GlobalCursors } from '@/components/global-cursors'
 import { GlobalMediaPlayer } from '@/components/global-media-player'
-import { AppShell } from '@/components/app-shell'
 import './globals.css'
 
 const cormorant = Cormorant_Garamond({ 
@@ -57,9 +56,7 @@ export default function RootLayout({
           <UnreadMessagesProvider>
             <CallProvider>
               <GlobalCursors />
-              <AppShell>
                 {children}
-              </AppShell>
               <GlobalMediaPlayer />
             </CallProvider>
           </UnreadMessagesProvider>

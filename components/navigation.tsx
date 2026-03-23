@@ -120,7 +120,7 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
         {active && (
           <motion.div
             layoutId="activeNav"
-            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 rounded-2xl"
+            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20"
             style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
             transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
           />

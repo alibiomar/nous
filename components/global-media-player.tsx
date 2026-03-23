@@ -535,7 +535,7 @@ export function GlobalMediaPlayer() {
 
         {/* ── Full page: media info card ── */}
         {!isLoading && currentMedia && isMusicPage && (
-          <div className="glass-panel border border-border/70 overflow-hidden rounded-t-3xl">
+          <div className="glass-panel border border-border/70  -z-10 overflow-hidden rounded-t-3xl">
             <div className="p-4 flex items-center gap-3 md:p-6 md:gap-4 md:items-start border-b border-border">
               <div className="hidden md:flex w-20 h-20 rounded-lg bg-linear-to-br from-primary to-primary/70 items-center justify-center shrink-0">
                 <Film className="w-10 h-10 text-white" />
@@ -544,12 +544,7 @@ export function GlobalMediaPlayer() {
                 <p className="font-serif font-semibold text-foreground leading-tight wrap-break-word text-2xl">
                   {currentMedia.title}
                 </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded">
-                    Video
-                  </span>
-                  <p className="text-sm text-text-secondary capitalize font-medium">YouTube</p>
-                </div>
+
                 {currentMedia.added_by && (
                   <p className="text-text-tertiary text-xs mt-2">
                     Added by{' '}
@@ -574,7 +569,7 @@ export function GlobalMediaPlayer() {
           <div
             className={
               isMusicPage
-                ? 'glass-panel border border-t-0 border-border/70 overflow-hidden rounded-b-3xl'
+                ? 'glass-panel border border-t-0 border-border/70 z-10 overflow-hidden rounded-b-3xl'
                 : 'absolute overflow-hidden pointer-events-none'
             }
             style={isMusicPage ? undefined : { left: -10000, top: 0, height: 1, width: 1 }}
@@ -586,7 +581,7 @@ export function GlobalMediaPlayer() {
               onPlaybackChange={handlePlaybackChange}
               currentTimeRef={playerCurrentTimeRef}
               isMusicPage={isMusicPage}
-              className={isMusicPage ? 'w-full h-96' : 'h-px w-px'}
+              className={isMusicPage ? 'w-full z-10' : 'h-px w-px'}
             />
           </div>
         )}
@@ -794,7 +789,7 @@ function YouTubeSyncPlayer({
     );
   }
 
-  return <div ref={containerRef} className={className ?? `w-full ${isMusicPage ? 'h-96' : 'h-48'}`} />;
+  return <div ref={containerRef} className={className ?? `w-full  ${isMusicPage ? 'h-screen' : 'h-48'}`} />;
 }
 
 // ─── AddMediaModal ────────────────────────────────────────────────────────────
@@ -866,10 +861,11 @@ function AddMediaModal({
  
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-60"
+      // FIX 1: Changed z-60 to z-[100] so it parses correctly and floats above everything
+      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50"
       onClick={e => { if (e.target === e.currentTarget && !isAdding) onClose(); }}
     >
-      <div className="glass-panel-strong w-full sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-3xl border border-border/70 max-h-[85vh] flex flex-col">
+      <div className="glass-panel-strong w-full z-60 sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-3xl border border-border/70 max-h-[85vh] flex flex-col">
  
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/60 shrink-0">
@@ -900,7 +896,8 @@ function AddMediaModal({
                 value={query}
                 onChange={e => handleQueryChange(e.target.value)}
                 placeholder="Song name, artist, lyrics…"
-                className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                // FIX 2: Added text-base sm:text-sm to prevent iOS Safari auto-zoom bugs
+                className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-4 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors"
               />
               {searching && (
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
@@ -975,7 +972,8 @@ function AddMediaModal({
         </div>
  
         {/* Footer */}
-        <div className="flex gap-3 px-5 py-4 border-t border-border/60 shrink-0">
+        {/* FIX 3: Replaced py-4 with pt-4 pb-8 sm:pb-4 to clear mobile gesture areas */}
+        <div className="flex gap-3 px-5 pt-4 pb-8 sm:pb-4 border-t border-border/60 shrink-0 z-50">
           <Button onClick={onClose} variant="outline" className="flex-1 rounded-2xl" disabled={isAdding}>
             Cancel
           </Button>
