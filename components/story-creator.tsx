@@ -479,8 +479,8 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
     const el = elRef.current; const stage = stageRef.current;
     if (!el || !stage) return;
 
-    let snapX = 0, snapY = 0, snapScale = 1, snapRot = 0;
-    let snapDist = 1, snapAng = 0, snapCX = 0, snapCY = 0;
+    let snapX = 0, snapY = 0, snapRot = 0;
+    let snapAng = 0, snapCX = 0, snapCY = 0;
 
     const rect = () => stage.getBoundingClientRect();
 
@@ -489,11 +489,10 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
       const currentItem = itemRef.current;
       onActivate(currentItem.id);
       snapX = currentItem.x; snapY = currentItem.y;
-      snapScale = currentItem.scale; snapRot = currentItem.rotate;
+      snapRot = currentItem.rotate;
       
       if (e.touches.length >= 2) {
         const t0 = e.touches[0], t1 = e.touches[1];
-        snapDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         snapAng  = angle2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         snapCX   = (t0.clientX + t1.clientX) / 2;
         snapCY   = (t0.clientY + t1.clientY) / 2;
@@ -510,12 +509,10 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
       
       if (e.touches.length >= 2) {
         const t0 = e.touches[0], t1 = e.touches[1];
-        const curDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         const curAng  = angle2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         const curCX   = (t0.clientX + t1.clientX) / 2;
         const curCY   = (t0.clientY + t1.clientY) / 2;
         onChange(currentItem.id, {
-          scale:  Math.max(0.3, Math.min(5, snapScale * (curDist / snapDist))),
           rotate: snapRot + (curAng - snapAng),
           x: Math.max(0, Math.min(1, snapX + (curCX - snapCX) / r.width)),
           y: Math.max(0, Math.min(1, snapY + (curCY - snapCY) / r.height)),
@@ -598,6 +595,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording]   = useState(false);
   const [cameraError, setCameraError]   = useState(false);
+  const [isSelfie, setIsSelfie]         = useState(false);
+  const [isFromCamera, setIsFromCamera] = useState(false);
   
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
@@ -670,7 +669,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     setCameraActive(false); setCameraError(false);
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaFile(null); setMediaPreview(null); setMediaKind('image');
-    setVideoDuration(0); setStartOffset(0);
+    setVideoDuration(0); setStartOffset(0); setIsSelfie(false); setIsFromCamera(false);
     setTool('none'); setTextItems([]); setActiveText(''); setActiveItemId(null);
     setPanel('none'); setMusicSelection(null); ytStop();
     setCaption(''); setIsPosting(false); setUploadStep(''); setPostError('');
@@ -719,14 +718,22 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     const vid = cameraVideoRef.current; if (!vid) return;
     const c = document.createElement('canvas');
     c.width = vid.videoWidth; c.height = vid.videoHeight;
-    c.getContext('2d')!.drawImage(vid, 0, 0);
+    const ctx = c.getContext('2d')!;
+    if (cameraFacing === 'user') {
+      // Mirror horizontally so the captured image matches what the user saw
+      ctx.translate(c.width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(vid, 0, 0);
 
     c.toBlob(blob => {
       if (!blob) return;
+      setIsSelfie(cameraFacing === 'user');
+      setIsFromCamera(true);
       stopCamera();
       loadMedia(new File([blob], 'capture.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.9);
-  }, [stopCamera]);
+  }, [stopCamera, cameraFacing]);
 
   const startRecording = useCallback(() => {
     if (!cameraStream) return;
@@ -735,6 +742,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     rec.ondataavailable = e => { if (e.data.size > 0) recordChunks.current.push(e.data); };
     rec.onstop = () => {
       const blob = new Blob(recordChunks.current, { type: 'video/webm' });
+      setIsFromCamera(true);
       stopCamera();
       loadMedia(new File([blob], 'capture.webm', { type: 'video/webm' }));
     };
@@ -851,6 +859,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     const fd = new FormData();
     fd.append('file', file);
     if (file.type.startsWith('video/')) fd.append('startOffset', startOff.toString());
+    if (isSelfie) fd.append('isSelfie', 'true');
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok || !data.secureUrl) { setPostError(data?.error || 'Upload failed'); return null; }
@@ -961,6 +970,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
           <video
             ref={cameraVideoRef}
             className="absolute inset-0 h-full w-full object-cover"
+            style={cameraFacing === 'user' ? { transform: 'scaleX(-1)' } : undefined}
             autoPlay
             playsInline
             muted
@@ -1065,8 +1075,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         >
           {/* Media */}
           {mediaKind === 'image'
-            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
-            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className="absolute inset-0 h-full w-full object-cover" />
+            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${isFromCamera ? 'object-contain' : 'object-cover'}`} />
+            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className={`absolute inset-0 h-full w-full ${isFromCamera ? 'object-contain' : 'object-cover'}`} />
           }
 
           {/* Draw canvas */}
