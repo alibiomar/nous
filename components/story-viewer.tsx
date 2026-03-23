@@ -74,6 +74,38 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
 
   useEffect(() => { setMounted(true); }, []);
 
+  // Lock body scroll while the viewer is open to prevent background scrolling
+  useEffect(() => {
+    if (!mounted) return;
+    const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+    const prevStyle = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      overflow: document.body.style.overflow,
+      width: document.body.style.width,
+    };
+
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.position = prevStyle.position;
+      document.body.style.top = prevStyle.top;
+      document.body.style.left = prevStyle.left;
+      document.body.style.right = prevStyle.right;
+      document.body.style.overflow = prevStyle.overflow;
+      document.body.style.width = prevStyle.width;
+      // Restore scroll position
+      if (typeof window !== 'undefined') window.scrollTo(0, scrollY);
+    };
+  }, [mounted]);
+
   // ── Progress bar
   useEffect(() => {
     setProgress(0);
