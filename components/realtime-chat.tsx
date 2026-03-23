@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { ChatMessageItem } from '@/components/chat-message'
 import { useChatScroll } from '@/hooks/use-chat-scroll'
+import { usePushNotifications } from '@/hooks/use-push-notifications' // <-- Added import
 import {
   useRealtimeChat,
   type ChatMessage,
@@ -42,6 +43,8 @@ export const RealtimeChat = ({
 }: RealtimeChatProps) => {
   const { inviteAndStartCall } = useCall()
   const { containerRef, sentinelRef, scrollToBottom, scrollToBottomIfAtBottom } = useChatScroll()
+  const { sendPushNotification } = usePushNotifications() // <-- Initialized the hook
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const userTypingRef = useRef(false)
@@ -68,6 +71,7 @@ export const RealtimeChat = ({
     userAvatarUrl,
     initialMessages,
   })
+  
   const [newMessage, setNewMessage] = useState('')
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
@@ -313,17 +317,16 @@ export const RealtimeChat = ({
         imageUrl: uploadedImageUrl || null,
       })
 
-      // Push notification to partner — client-side, no self-call latency
-      void fetch('/api/push/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: newMessage.trim()
-            ? `${username}: ${newMessage.trim().slice(0, 100)}`
-            : `${username} sent an image`,
+      // Push notification to partner — now cleanly utilizing the generic hook!
+      void sendPushNotification(
+        newMessage.trim()
+          ? `${username}: ${newMessage.trim().slice(0, 100)}`
+          : `${username} sent an image`,
+        {
           url: '/messages',
-        }),
-      }).catch(() => undefined)
+          senderId: currentUserId, // prevents pushing to your own devices
+        }
+      )
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
@@ -340,7 +343,18 @@ export const RealtimeChat = ({
         fileInputRef.current.value = ''
       }
     },
-    [newMessage, imagePreviewUrl, selectedImageFile, isConnected, sendMessage, broadcastTypingStatus, broadcastUnreadIncrement]
+    [
+      newMessage, 
+      imagePreviewUrl, 
+      selectedImageFile, 
+      isConnected, 
+      sendMessage, 
+      broadcastTypingStatus, 
+      broadcastUnreadIncrement, 
+      username, 
+      currentUserId, 
+      sendPushNotification
+    ]
   )
 
   const handleDeleteMessage = useCallback(

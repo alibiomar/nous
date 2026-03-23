@@ -31,10 +31,9 @@ export const ChatMessageItem = ({
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(message.content || '')
   const [isLoading, setIsLoading] = useState(false)
-  const formattedTime = new Date(message.createdAt).toLocaleTimeString('en-US', {
+  const formattedTime = new Date(message.createdAt).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: true,
   })
 
   const initials = message.user.name

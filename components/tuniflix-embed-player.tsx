@@ -201,9 +201,6 @@ function YouTubeEmbedPlayer({
 }
 
 // ─── Generic embed player (JWPlayer, etc.) with visual sync nudge ─────────────
-// Cross-origin iframes block postMessage from the parent, so programmatic
-// control isn't possible. Instead we show a lightweight sync overlay that
-// lets both users manually signal play/pause to each other.
 
 function GenericEmbedPlayer({
   src,
@@ -234,13 +231,10 @@ function GenericEmbedPlayer({
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-  // Always show toast — works everywhere including Safari, iOS, fullscreen
   const notify = (msg: string) => {
     showToast(msg);
     if (navigator.vibrate) navigator.vibrate(50);
-    // Send real push notification to partner (works when tab is closed/backgrounded)
     void sendPushNotification(msg);
-    // Also fire local system notification if tab is hidden and permission granted
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
       try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
     }
@@ -279,7 +273,7 @@ function GenericEmbedPlayer({
         <Button
           type="button"
           onClick={() => onPlaybackChange?.('play', 0)}
-          className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
+          className="flex items-center hover:scale-105 gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
         >
           <Play className="h-3 w-3" />
           I played
@@ -288,14 +282,14 @@ function GenericEmbedPlayer({
         <Button
           type="button"
           onClick={() => onPlaybackChange?.('pause', 0)}
-          className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
+          className="flex items-center hover:scale-105 gap-1.5 rounded-full border border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
         >
           <Pause className="h-3 w-3" />
           I paused
         </Button>
 
         {externalSyncEvent && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-primary">
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-primary fixed top-2">
             {externalSyncEvent.action === 'play'
               ? <Play className="h-3 w-3" />
               : <Pause className="h-3 w-3" />}

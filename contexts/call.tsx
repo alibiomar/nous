@@ -399,7 +399,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       void fetch('/api/push/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `📞 ${user.name} is calling you`, url: '/messages' }),
+        body: JSON.stringify({ message: `${user.name} is calling you`, url: '/messages' }),
       }).catch(() => undefined)
 
       startCallSession({

@@ -7,6 +7,7 @@ import { useCurrentUserImage } from '@/hooks/use-current-user-image';
 import type { ChatMessage } from '@/hooks/use-realtime-chat';
 import { createClient } from '@/lib/client';
 import { readDeviceCache, writeDeviceCache } from '@/lib/device-cache';
+import { getPreloadedMessages, clearPreloadedMessages } from '@/lib/message-prefetch-cache';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/contexts/call';
 
@@ -52,29 +53,44 @@ export function RealtimeChatWrapper({
 }: RealtimeChatWrapperProps) {
   const { inviteAndStartCall } = useCall();
   const supabase = createClient();
-  const [initialMessages, setInitialMessages] = useState<ChatMessage[]>([]);
+  // Read from module-level prefetch cache populated by Splash — synchronous, no flash
+  const [initialMessages, setInitialMessages] = useState<ChatMessage[]>(() => {
+    const preloaded = getPreloadedMessages();
+    if (preloaded && preloaded.length > 0) return preloaded;
+    const cached = readDeviceCache<ChatMessage[]>(`nous:messages:${currentUserId}`);
+    return cached ?? [];
+  });
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Start as false if we already have messages from the prefetch cache
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const preloaded = getPreloadedMessages();
+    if (preloaded && preloaded.length > 0) return false;
+    const cached = readDeviceCache<ChatMessage[]>(`nous:messages:${currentUserId}`);
+    return !cached || cached.length === 0;
+  });
   const [hasOtherPeerOnline, setHasOtherPeerOnline] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
   const currentUserAvatarUrl = useCurrentUserImage();
 
-  // Fetch initial message history from database
+  // Fetch/refresh message history — Splash already prefetched so this is a background refresh
   useEffect(() => {
     const loadMessages = async () => {
       const deviceCacheKey = `nous:messages:${currentUserId}`;
-      const cachedMessages = readDeviceCache<ChatMessage[]>(deviceCacheKey);
 
-      if (cachedMessages && cachedMessages.length > 0) {
-        setInitialMessages(cachedMessages);
+      // If Splash already loaded messages, use them and clear the prefetch cache
+      const preloaded = getPreloadedMessages();
+      if (preloaded && preloaded.length > 0) {
+        setInitialMessages(preloaded);
         setIsLoading(false);
+        clearPreloadedMessages();
+        writeDeviceCache(deviceCacheKey, preloaded, DEVICE_MESSAGES_CACHE_TTL_MS);
+        return; // Splash already did the fetch — skip the duplicate request
       }
 
       try {
         const response = await fetch('/api/messages?limit=200');
         if (response.ok) {
           const messages = await response.json();
-          // Transform to ChatMessage format
           const transformedMessages: ChatMessage[] = messages.map((msg: any) => ({
             id: msg.id,
             sender_id: msg.sender_id,
@@ -235,7 +251,7 @@ export function RealtimeChatWrapper({
             </div>
           </div>
 
-          <div className="mt-3 min-h-0 rounded-xl flex-1 overflow-hidden">
+          <div className="mt-3 min-h-0 rounded-2xl flex-1 overflow-hidden">
             <RealtimeChat
               roomName="default-chat-room"
               username={currentUserName}

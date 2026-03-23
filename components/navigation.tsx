@@ -4,14 +4,14 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
 
 const NAV_ITEMS = [
-  { href: '/feed',    icon: Heart,         label: 'Moments' },
-  { href: '/messages', icon: MessageCircle, label: 'Messages', key: 'messages' },
+  { href: '/feed',     icon: Heart,         label: 'Moments' },
+  { href: '/messages', icon: MessageCircle, label: 'Messages', id: 'messages' },
   { href: '/music',    icon: Music,         label: 'Media' },
   { href: '/cinema',   icon: Clapperboard,  label: 'Cinema' },
 ];
@@ -21,7 +21,6 @@ export function Navigation() {
   const { hasUnread } = useUnreadMessages();
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
-  // Listen for the browser's native fullscreen API events
   React.useEffect(() => {
     const handleFullscreenChange = () => {
       const isFull = !!(
@@ -33,7 +32,6 @@ export function Navigation() {
       setIsFullscreen(isFull);
     };
 
-    // Standard + Vendor prefixes for maximum mobile compatibility (iOS Safari, etc.)
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
@@ -50,7 +48,6 @@ export function Navigation() {
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(`${path}/`);
 
-  // Completely hide the navigation elements from the DOM while in fullscreen
   if (isFullscreen) return null;
 
   return (
@@ -62,12 +59,14 @@ export function Navigation() {
         </Link>
 
         <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={item.href}
-              {...item}
-              active={isActive(item.href)}
-              hasUnread={item.key === 'messages' ? hasUnread : false}
+              key={href}
+              href={href}
+              icon={icon}
+              label={label}
+              active={isActive(href)}
+              hasUnread={id === 'messages' ? hasUnread : false}
               variant="desktop"
             />
           ))}
@@ -96,14 +95,16 @@ export function Navigation() {
       </header>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 px-4 pb-6 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4 md:hidden">
         <div className="glass-panel grid grid-cols-4 gap-1 rounded-4xl p-2 shadow-xl shadow-black/10">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={item.href}
-              {...item}
-              active={isActive(item.href)}
-              hasUnread={item.key === 'messages' ? hasUnread : false}
+              key={href}
+              href={href}
+              icon={icon}
+              label={label}
+              active={isActive(href)}
+              hasUnread={id === 'messages' ? hasUnread : false}
               variant="mobile"
             />
           ))}
@@ -141,7 +142,7 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
             }`} />
           )}
         </div>
-        
+
         <span className={isMobile ? 'text-[10px] font-bold uppercase tracking-wider' : 'text-sm font-medium ml-3'}>
           {label}
         </span>
@@ -152,7 +153,7 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
             layoutId="activeNav"
             className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 rounded-2xl"
             style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
-            transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
           />
         )}
       </motion.div>

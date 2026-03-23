@@ -197,7 +197,7 @@ export default function AccountPage() {
                     </Button>
                   )}
                   {pushStatus === 'subscribed' && (
-                    <p className="text-sm text-primary">🔔 Notifications enabled</p>
+                    <p className="text-sm text-primary">Notifications enabled</p>
                   )}
                   <Button type="submit" disabled={isSaving || !name.trim()} className="h-11 rounded-2xl px-5">
                     {isSaving ? 'Saving…' : 'Save changes'}

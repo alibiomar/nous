@@ -7,7 +7,8 @@ import {
    AlignCenter, Trash2, Clock, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
+import { usePushNotifications } from '@/hooks/use-push-notifications';
+import { useUser } from '@/contexts/user';
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & constants
 // ─────────────────────────────────────────────────────────────────────────────
@@ -668,7 +669,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [isPosting, setIsPosting]   = useState(false);
   const [uploadStep, setUploadStep] = useState('');
   const [postError, setPostError]   = useState('');
-
+const { sendPushNotification } = usePushNotifications();
   useEffect(() => {
     if (musicSelection && panel === 'none' && mediaPreview) {
       ytLoad(musicSelection.videoId, musicSelection.startSec);
@@ -679,6 +680,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, [musicSelection?.videoId, musicSelection?.startSec, panel, mediaPreview]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { user: currentUser } = useUser();
 
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -960,7 +963,19 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
           youtube_end_sec:   musicSelection ? musicSelection.startSec + 30 : null,
         }),
       });
+
+
       if (!res.ok) { const d = await res.json().catch(() => null); setPostError(d?.error || 'Failed'); return; }
+
+      const senderName = currentUser?.name ?? 'Someone';
+      const senderId = currentUser?.id ?? '';
+      void sendPushNotification(
+        `${senderName} posted a new story ✨`,
+        {
+          url: '/feed', // Directs users who click the notification to the feed
+          senderId,     // Prevents pushing to the user's own devices
+        }
+      );
       reset(); onPosted?.(); onClose();
     } catch { setPostError('Something went wrong.'); }
     finally { setIsPosting(false); setUploadStep(''); }

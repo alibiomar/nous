@@ -11,6 +11,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
+export interface SendPushOptions {
+  url?: string;
+  senderId?: string;
+}
+
 export function usePushNotifications() {
   const [status, setStatus] = useState<PushStatus>('loading');
   const subscriptionRef = useRef<PushSubscription | null>(null);
@@ -30,6 +35,10 @@ export function usePushNotifications() {
 
       try {
         const reg = await navigator.serviceWorker.register('/sw-push.js', { scope: '/' });
+        
+        // Force the browser to check for service worker updates
+        reg.update().catch(() => {}); 
+        
         await navigator.serviceWorker.ready;
 
         const existing = await reg.pushManager.getSubscription();
@@ -37,9 +46,10 @@ export function usePushNotifications() {
           subscriptionRef.current = existing;
           setStatus('subscribed');
         } else {
-          setStatus(Notification.permission === 'granted' ? 'prompt' : 'prompt');
+          setStatus('prompt');
         }
-      } catch {
+      } catch (err) {
+        console.error('Service Worker registration failed:', err);
         setStatus('unsupported');
       }
     };
@@ -110,16 +120,23 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Send push notification to other users
-  const sendPushNotification = useCallback(async (message: string, url?: string): Promise<void> => {
+  // Generic function to send push notifications anywhere in the app
+  const sendPushNotification = useCallback(async (
+    message: string, 
+    options?: SendPushOptions
+  ): Promise<void> => {
     try {
       await fetch('/api/push/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, url: url ?? '/cinema' }),
+        body: JSON.stringify({ 
+          message, 
+          url: options?.url,             // e.g., '/cinema', '/chat', '/feed'
+          senderId: options?.senderId    // e.g., current user's ID to exclude their own devices
+        }),
       });
-    } catch {
-      // non-fatal — toast already shown locally
+    } catch (err) {
+      console.error('Failed to send push notification:', err);
     }
   }, []);
 

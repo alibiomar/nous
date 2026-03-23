@@ -124,16 +124,6 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Push notification to partner
-    void fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `${session.name || 'Someone'} posted a new story ✨`,
-        url: '/feed',
-      }),
-    }).catch(() => undefined);
-
     return NextResponse.json(data, { status: 201 });
   } catch (err) {
     console.error('Create story error:', err);
