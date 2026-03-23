@@ -88,9 +88,9 @@ export function Navigation() {
       {/* Mobile Top Header */}
       <header className="fixed inset-x-0 top-0 z-30 px-4 pt-4 md:hidden">
         <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-4 shadow-lg shadow-black/5">
-          <Image src="/logo.svg" alt="Logo" width={32} height={32} />
+          <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" />
           <Link href="/account" className="active:scale-90 transition-transform">
-            <CurrentUserAvatar size="sm" />
+            <CurrentUserAvatar size="md" />
           </Link>
         </div>
       </header>

@@ -264,7 +264,7 @@ function GenericEmbedPlayer({
   }, []);
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full bg-background">
       <iframe
         src={src}
         className={`w-full ${className ?? ''}`}
@@ -274,7 +274,7 @@ function GenericEmbedPlayer({
       />
 
       {/* Sync overlay — floats above the player controls area */}
-      <div className="mt-2 flex items-center gap-2 px-1 flex-wrap bg-transparent">
+      <div className="mt-2 flex items-center gap-2 px-1 flex-wrap bg-transparent py-2">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
         <Button
           type="button"

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CameraOff, Check, Music,
   Pen, RotateCcw, Search, SwitchCamera, Type, Upload, X,
-  Sparkles, AlignCenter, Trash2, Clock, Loader2,
+   AlignCenter, Trash2, Clock, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -73,6 +73,7 @@ async function flattenToBlob(
   mediaEl: HTMLImageElement | HTMLVideoElement,
   overlayCanvas: HTMLCanvasElement,
   textItems: TextItem[],
+  isSelfie: boolean
 ): Promise<Blob> {
   const outW = overlayCanvas.width;
   const outH = overlayCanvas.height;
@@ -81,9 +82,15 @@ async function flattenToBlob(
   out.width = outW; out.height = outH;
   const ctx = out.getContext('2d')!;
 
-  // Object-cover equivalent for canvas drawing
   const mediaW = (mediaEl as HTMLVideoElement).videoWidth || (mediaEl as HTMLImageElement).naturalWidth;
   const mediaH = (mediaEl as HTMLVideoElement).videoHeight || (mediaEl as HTMLImageElement).naturalHeight;
+
+  ctx.save();
+  // If it's a selfie, horizontally mirror the base media
+  if (isSelfie) {
+    ctx.translate(outW, 0);
+    ctx.scale(-1, 1);
+  }
 
   if (mediaW && mediaH) {
     const imgRatio = mediaW / mediaH;
@@ -101,9 +108,10 @@ async function flattenToBlob(
     }
     ctx.drawImage(mediaEl, drawX, drawY, drawW, drawH);
   } else {
-    // Fallback if intrinsic dimensions fail
     ctx.drawImage(mediaEl, 0, 0, outW, outH);
   }
+  
+  ctx.restore(); // Restore context so text/edits aren't drawn backwards!
 
   // Draw edits (pen + text overlays)
   ctx.drawImage(overlayCanvas, 0, 0, outW, outH);
@@ -742,11 +750,9 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     const c = document.createElement('canvas');
     c.width = vid.videoWidth; c.height = vid.videoHeight;
     const ctx = c.getContext('2d')!;
-    if (cameraFacing === 'user') {
-      // Mirror horizontally so the captured image matches what the user saw
-      ctx.translate(c.width, 0);
-      ctx.scale(-1, 1);
-    }
+    
+    // We capture raw un-mirrored bytes directly from the sensor.
+    // The CSS handles the visual flip, we will handle the actual file flip in `flattenToBlob` before upload.
     ctx.drawImage(vid, 0, 0);
 
     c.toBlob(blob => {
@@ -764,12 +770,13 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     rec.ondataavailable = e => { if (e.data.size > 0) recordChunks.current.push(e.data); };
     rec.onstop = () => {
       const blob = new Blob(recordChunks.current, { type: 'video/webm' });
+      setIsSelfie(cameraFacing === 'user');
       stopCamera();
       loadMedia(new File([blob], 'capture.webm', { type: 'video/webm' }));
     };
     rec.start(); mediaRecRef.current = rec; setIsRecording(true);
     setTimeout(() => stopRecording(), MAX_VIDEO_DURATION * 1000);
-  }, [cameraStream, stopCamera]);
+  }, [cameraStream, stopCamera, cameraFacing]);
 
   const stopRecording = useCallback(() => {
     mediaRecRef.current?.stop(); mediaRecRef.current = null; setIsRecording(false);
@@ -876,11 +883,14 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, []);
 
   // ── Post ───────────────────────────────────────────────────────────────────
-  const uploadFile = async (file: File, startOff = 0) => {
+  const uploadFile = async (file: File, startOff = 0, uploadAsSelfie = false) => {
     const fd = new FormData();
     fd.append('file', file);
     if (file.type.startsWith('video/')) fd.append('startOffset', startOff.toString());
-    if (isSelfie) fd.append('isSelfie', 'true');
+    
+    // Only pass isSelfie flag to Cloudinary if requested (mostly for video where we can't burn the flip in client)
+    if (uploadAsSelfie) fd.append('isSelfie', 'true');
+    
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok || !data.secureUrl) { setPostError(data?.error || 'Upload failed'); return null; }
@@ -894,9 +904,12 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
       let imageFile: File; let videoFile: File | null = null;
       if (mediaKind === 'image') {
         const hasDrawOrText = undoStack.current.length > 0 || textItems.length > 0;
-        if (hasDrawOrText) {
-          setUploadStep('Rendering edits…');
-          const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems);
+        
+        // If it's a selfie or has edits, we need to flatten the image canvas 
+        // to bake in the CSS transform and text edits
+        if (hasDrawOrText || isSelfie) {
+          setUploadStep(hasDrawOrText ? 'Rendering edits…' : 'Processing image…');
+          const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems, isSelfie);
           imageFile = await compressImage(new File([blob], 'story.jpg', { type: 'image/jpeg' }));
         } else {
           setUploadStep('Preparing…');
@@ -907,17 +920,29 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         const vid = editVidRef.current!;
         const t = document.createElement('canvas');
         t.width = vid.videoWidth || 480; t.height = vid.videoHeight || 854;
-        t.getContext('2d')!.drawImage(vid, 0, 0, t.width, t.height);
+        const ctx = t.getContext('2d')!;
+        
+        // Mirror the thumbnail natively so it matches the requested Cloudinary flipped video
+        if (isSelfie) {
+          ctx.translate(t.width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(vid, 0, 0, t.width, t.height);
         const tb = await new Promise<Blob>(r => t.toBlob(b => r(b!), 'image/jpeg', 0.85));
         imageFile = new File([tb], 'thumb.jpg', { type: 'image/jpeg' });
         videoFile = mediaFile;
       }
       setUploadStep('Uploading…');
       
-      const imgR = await uploadFile(imageFile, 0); if (!imgR) return;
+      // Send isSelfie = false since we already physically mirrored the image file in the logic above
+      const imgR = await uploadFile(imageFile, 0, false); 
+      if (!imgR) return;
+      
       let videoUrl: string | null = null, videoPublicId: string | null = null;
       if (videoFile) {
-        const vidR = await uploadFile(videoFile, startOffset); if (!vidR) return;
+        // Send isSelfie = true so Cloudinary backend transforms the video, since we don't edit it client-side
+        const vidR = await uploadFile(videoFile, startOffset, isSelfie); 
+        if (!vidR) return;
         videoUrl = vidR.url; videoPublicId = vidR.publicId;
       }
       setUploadStep('Posting…');
@@ -990,7 +1015,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
           {/* Camera viewfinder — full screen */}
           <video
             ref={cameraVideoRef}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover transition-transform"
             style={cameraFacing === 'user' ? { transform: 'scaleX(-1)' } : undefined}
             autoPlay
             playsInline
@@ -1096,8 +1121,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         >
           {/* Media */}
           {mediaKind === 'image'
-            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
-            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className="absolute inset-0 h-full w-full object-cover" />
+            ? <img ref={editImgRef} src={mediaPreview!} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover transition-transform" style={isSelfie ? { transform: 'scaleX(-1)' } : undefined} />
+            : <video ref={editVidRef} src={mediaPreview!} autoPlay playsInline loop muted className="absolute inset-0 h-full w-full object-cover transition-transform" style={isSelfie ? { transform: 'scaleX(-1)' } : undefined} />
           }
 
           {/* Draw canvas */}
@@ -1257,7 +1282,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
                 <Button onClick={handlePost} disabled={isPosting} className="h-11 gap-1.5 rounded-2xl px-5 shrink-0">
                   {isPosting
                     ? <><img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" /><span className="text-sm">{uploadStep || '…'}</span></>
-                    : <><Sparkles className="h-4 w-4" />Share</>
+                    : <span> Share </span>
                   }
                 </Button>
               </div>
@@ -1303,7 +1328,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
                 <Button onClick={handlePost} disabled={isPosting} className="w-full h-12 rounded-2xl text-base font-semibold gap-2">
                   {isPosting
                     ? <><img src="/animated_heart_icon.svg" alt="" className="h-4 w-4" />{uploadStep || 'Working…'}</>
-                    : <><Sparkles className="h-4 w-4" />Share your story</>
+                    : <span>Share your story</span>
                   }
                 </Button>
               </div>
