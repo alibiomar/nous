@@ -19,6 +19,8 @@ export function Navigation() {
   const pathname = usePathname();
   const { hasUnread } = useUnreadMessages();
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isNavigating, setIsNavigating] = React.useState(false);
+  const navTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     const handleFullscreenChange = () => {
@@ -49,10 +51,53 @@ export function Navigation() {
     return pathname === path || pathname.startsWith(`${path}/`);
   }, [pathname]);
 
+  // Clear navigating state when pathname updates (navigation finished)
+  React.useEffect(() => {
+    if (navTimerRef.current) {
+      window.clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
+    }
+    setIsNavigating(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    return () => {
+      if (navTimerRef.current) {
+        window.clearTimeout(navTimerRef.current);
+        navTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleNavigateStart = React.useCallback((href: string) => {
+    // don't show loader when clicking the already-active route
+    if (isActive(href)) return;
+
+    if (navTimerRef.current) {
+      window.clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
+    }
+
+    // debounce so fast navigations don't flash the loader
+    navTimerRef.current = window.setTimeout(() => {
+      setIsNavigating(true);
+      navTimerRef.current = null;
+    }, 120);
+  }, [isActive]);
+
   if (isFullscreen) return null;
 
   return (
     <>
+      {/* Navigation loading overlay */}
+      {isNavigating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <div className="text-sm font-medium text-primary">Loading…</div>
+          </div>
+        </div>
+      )}
       {/* Desktop Sidebar */}
       <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col rounded-3xl p-4 md:flex">
         <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
@@ -69,6 +114,7 @@ export function Navigation() {
               active={isActive(href)}
               hasUnread={id === 'messages' ? hasUnread : false}
               variant="desktop"
+              onNavigate={handleNavigateStart}
             />
           ))}
         </nav>
@@ -107,6 +153,7 @@ export function Navigation() {
               active={isActive(href)}
               hasUnread={id === 'messages' ? hasUnread : false}
               variant="mobile"
+              onNavigate={handleNavigateStart}
             />
           ))}
         </div>
@@ -122,13 +169,14 @@ interface NavAnchorProps {
   active: boolean;
   hasUnread?: boolean;
   variant: 'desktop' | 'mobile';
+  onNavigate?: (href: string) => void;
 }
 
-const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavAnchorProps) {
+const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant, onNavigate }: NavAnchorProps) {
   const isMobile = variant === 'mobile';
 
   return (
-    <Link href={href} className="group block outline-none">
+    <Link href={href} onClick={() => onNavigate?.(href)} className="group block outline-none">
       <div
         className={`flex items-center justify-center gap-1 py-3 transition-all duration-200 ease-in-out active:scale-95 ${
           isMobile ? 'min-h-14 flex-col rounded-2xl' : 'flex-row justify-start rounded-xl px-4'
