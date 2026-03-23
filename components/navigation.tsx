@@ -19,9 +19,39 @@ const NAV_ITEMS = [
 export function Navigation() {
   const pathname = usePathname();
   const { hasUnread } = useUnreadMessages();
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+
+  // Listen for the browser's native fullscreen API events
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFull = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isFull);
+    };
+
+    // Standard + Vendor prefixes for maximum mobile compatibility (iOS Safari, etc.)
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
 
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(`${path}/`);
+
+  // Completely hide the navigation elements from the DOM while in fullscreen
+  if (isFullscreen) return null;
 
   return (
     <>
@@ -120,7 +150,7 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
         {active && (
           <motion.div
             layoutId="activeNav"
-            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20"
+            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 rounded-2xl"
             style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
             transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
           />
