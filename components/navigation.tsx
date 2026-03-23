@@ -32,21 +32,23 @@ export function Navigation() {
       setIsFullscreen(isFull);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    const events = [
+      'fullscreenchange',
+      'webkitfullscreenchange',
+      'mozfullscreenchange',
+      'MSFullscreenChange'
+    ];
+
+    events.forEach(event => document.addEventListener(event, handleFullscreenChange));
 
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      events.forEach(event => document.removeEventListener(event, handleFullscreenChange));
     };
   }, []);
 
-  const isActive = (path: string) =>
-    pathname === path || pathname.startsWith(`${path}/`);
+  const isActive = React.useCallback((path: string) => {
+    return pathname === path || pathname.startsWith(`${path}/`);
+  }, [pathname]);
 
   if (isFullscreen) return null;
 
@@ -55,13 +57,13 @@ export function Navigation() {
       {/* Desktop Sidebar */}
       <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col rounded-3xl p-4 md:flex">
         <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
-          <Image src="/logo.svg" alt="Logo" width={48} height={48} className="h-10 w-auto" />
+          <Image src="/logo.svg" alt="Logo" width={48} height={48} className="h-10 w-auto" priority />
         </Link>
 
         <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
           {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={href}
+              key={`desktop-${href}`}
               href={href}
               icon={icon}
               label={label}
@@ -79,7 +81,7 @@ export function Navigation() {
           <CurrentUserAvatar size="md" />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">You</p>
-            <p className="text-xs text-muted-foreground font-medium">Profile</p>
+            <p className="text-xs font-medium text-muted-foreground">Profile</p>
           </div>
         </Link>
       </aside>
@@ -87,8 +89,8 @@ export function Navigation() {
       {/* Mobile Top Header */}
       <header className="fixed inset-x-0 top-0 z-30 px-4 pt-4 md:hidden">
         <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-4 shadow-lg shadow-black/5">
-          <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" />
-          <Link href="/account" className="active:scale-90 transition-transform">
+          <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" priority />
+          <Link href="/account" className="transition-transform active:scale-90">
             <CurrentUserAvatar size="md" />
           </Link>
         </div>
@@ -99,7 +101,7 @@ export function Navigation() {
         <div className="glass-panel grid grid-cols-4 gap-1 rounded-4xl p-2 shadow-xl shadow-black/10">
           {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={href}
+              key={`mobile-${href}`}
               href={href}
               icon={icon}
               label={label}
@@ -123,11 +125,12 @@ interface NavAnchorProps {
   variant: 'desktop' | 'mobile';
 }
 
-function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavAnchorProps) {
+// Memoize the child component to prevent unnecessary re-renders when parent state changes
+const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavAnchorProps) {
   const isMobile = variant === 'mobile';
 
   return (
-    <Link href={href} className="relative group">
+    <Link href={href} className="group relative">
       <motion.div
         whileTap={{ scale: 0.92 }}
         className={`relative z-10 flex flex-col items-center justify-center gap-1 py-3 transition-colors duration-300 ${
@@ -135,23 +138,23 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
         } ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
       >
         <div className="relative">
-          <Icon className={`${isMobile ? 'w-6 h-6' : 'w-5 h-5'} transition-transform group-hover:scale-110`} />
+          <Icon className={`${isMobile ? 'h-6 w-6' : 'h-5 w-5'} transition-transform group-hover:scale-110`} />
           {hasUnread && (
             <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 ${
-              active ? 'bg-white border-primary' : 'bg-primary border-white dark:border-zinc-900'
+              active ? 'border-primary bg-white' : 'border-white bg-primary dark:border-zinc-900'
             }`} />
           )}
         </div>
 
-        <span className={isMobile ? 'text-[10px] font-bold uppercase tracking-wider' : 'text-sm font-medium ml-3'}>
+        <span className={isMobile ? 'text-[10px] font-bold uppercase tracking-wider' : 'ml-3 text-sm font-medium'}>
           {label}
         </span>
 
         {/* Animated Background Pill */}
         {active && (
           <motion.div
-            layoutId="activeNav"
-            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 rounded-2xl"
+            layoutId={`activeNav-${variant}`} 
+            className="absolute inset-0 -z-10 rounded-2xl bg-primary shadow-md shadow-primary/20"
             style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
             transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
           />
@@ -159,4 +162,4 @@ function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavA
       </motion.div>
     </Link>
   );
-}
+});
