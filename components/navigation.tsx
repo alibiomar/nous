@@ -4,9 +4,17 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
+
+const NAV_ITEMS = [
+  { href: '/feed',    icon: Heart,         label: 'Moments' },
+  { href: '/messages', icon: MessageCircle, label: 'Messages', key: 'messages' },
+  { href: '/music',    icon: Music,         label: 'Media' },
+  { href: '/cinema',   icon: Clapperboard,  label: 'Cinema' },
+];
 
 export function Navigation() {
   const pathname = usePathname();
@@ -15,130 +23,109 @@ export function Navigation() {
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(`${path}/`);
 
-  const navItems = [
-    { href: '/feed',     icon: <Heart className="w-5 h-5" />,        label: 'Moments' },
-    { href: '/messages', icon: <MessageCircle className="w-5 h-5" />, label: 'Messages', hasUnread },
-    { href: '/music',    icon: <Music className="w-5 h-5" />,         label: 'Media' },
-    { href: '/cinema',   icon: <Clapperboard className="w-5 h-5" />,  label: 'Cinema' },
-  ];
-
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-68 flex-col rounded-3xl p-4 md:flex">
-        <Link href="/feed" className="flex items-center gap-3 rounded-2xl px-2 py-1" aria-label="Go to feed">
-          <Image src="/logo.svg" alt="Nous logo" width={64} height={64} className="h-12 w-auto" />
+      <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col rounded-3xl p-4 md:flex">
+        <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
+          <Image src="/logo.svg" alt="Logo" width={48} height={48} className="h-10 w-auto" />
         </Link>
 
-        <Link
-          href="/account"
-          className="mt-5 flex items-center gap-3 rounded-2xl border border-border/70 bg-background/50 px-3 py-3 transition-colors hover:bg-background/70"
-          title="Go to account"
-        >
-          <CurrentUserAvatar size="md" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">You</p>
-            <p className="text-xs text-muted-foreground">Profile</p>
-          </div>
-        </Link>
-
-        <nav className="mt-6 flex flex-1 flex-col gap-2" aria-label="Primary">
-          {navItems.map((item) => (
-            <DesktopSidebarLink
+        <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
+          {NAV_ITEMS.map((item) => (
+            <NavAnchor
               key={item.href}
-              href={item.href}
-              icon={item.icon}
-              label={item.label}
+              {...item}
               active={isActive(item.href)}
-              hasUnread={item.hasUnread}
+              hasUnread={item.key === 'messages' ? hasUnread : false}
+              variant="desktop"
             />
           ))}
         </nav>
 
-        {/* Logout moved to /account page */}
+        <Link
+          href="/account"
+          className="mt-auto flex items-center gap-3 rounded-2xl border border-border/40 bg-background/40 p-3 transition-all hover:bg-background/60 active:scale-95"
+        >
+          <CurrentUserAvatar size="md" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">You</p>
+            <p className="text-xs text-muted-foreground font-medium">Profile</p>
+          </div>
+        </Link>
       </aside>
 
       {/* Mobile Top Header */}
-      <header className="fixed inset-x-0 top-0 z-30 md:hidden">
-        <div className="px-3 pt-3">
-          <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-3">
-            <Link href="/feed" className="flex items-center gap-2" aria-label="Go to feed">
-              <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" />
-            </Link>
-            <Link href="/account" className="inline-flex items-center" title="Go to account">
-              <CurrentUserAvatar size="sm" />
-            </Link>
-          </div>
+      <header className="fixed inset-x-0 top-0 z-30 px-4 pt-4 md:hidden">
+        <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-4 shadow-lg shadow-black/5">
+          <Image src="/logo.svg" alt="Logo" width={32} height={32} />
+          <Link href="/account" className="active:scale-90 transition-transform">
+            <CurrentUserAvatar size="sm" />
+          </Link>
         </div>
       </header>
 
-      {/* Mobile Bottom Tab Navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 md:hidden">
-        <div className="px-3 pb-3">
-          <div className="glass-panel grid grid-cols-4 gap-1 rounded-2xl px-2 py-2">
-            {navItems.map((item) => (
-              <MobileTabLink
-                key={item.href}
-                href={item.href}
-                icon={item.icon}
-                label={item.label}
-                active={isActive(item.href)}
-                hasUnread={item.hasUnread}
-              />
-            ))}
-          </div>
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 px-4 pb-6 md:hidden">
+        <div className="glass-panel grid grid-cols-4 gap-1 rounded-4xl p-2 shadow-xl shadow-black/10">
+          {NAV_ITEMS.map((item) => (
+            <NavAnchor
+              key={item.href}
+              {...item}
+              active={isActive(item.href)}
+              hasUnread={item.key === 'messages' ? hasUnread : false}
+              variant="mobile"
+            />
+          ))}
         </div>
       </nav>
     </>
   );
 }
 
-interface NavLinkProps {
+interface NavAnchorProps {
   href: string;
-  icon: React.ReactNode;
+  icon: React.ElementType;
   label: string;
   active: boolean;
   hasUnread?: boolean;
+  variant: 'desktop' | 'mobile';
 }
 
-function DesktopSidebarLink({ href, icon, label, active, hasUnread }: NavLinkProps) {
-  return (
-    <Link
-      href={href}
-      className={`relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all ${
-        active
-          ? 'bg-primary text-primary-foreground shadow-sm'
-          : 'text-foreground hover:bg-background/65'
-      }`}
-    >
-      <span className="relative inline-block shrink-0">
-        {icon}
-        {hasUnread && (
-          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary" />
-        )}
-      </span>
-      <span>{label}</span>
-    </Link>
-  );
-}
+function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant }: NavAnchorProps) {
+  const isMobile = variant === 'mobile';
 
-function MobileTabLink({ href, icon, label, active, hasUnread }: NavLinkProps) {
   return (
-    <Link
-      href={href}
-      className={`relative flex min-h-14 flex-col items-center justify-center rounded-xl px-1 transition-all duration-200 ${
-        active
-          ? 'bg-primary text-primary-foreground font-medium shadow-sm'
-          : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
-      }`}
-    >
-      <span className="relative inline-block shrink-0">
-        {icon}
-        {hasUnread && (
-          <span className="absolute -right-1 -top-1 block h-2.5 w-2.5 rounded-full bg-primary" />
+    <Link href={href} className="relative group">
+      <motion.div
+        whileTap={{ scale: 0.92 }}
+        className={`relative z-10 flex flex-col items-center justify-center gap-1 py-3 transition-colors duration-300 ${
+          isMobile ? 'min-h-14 rounded-2xl' : 'flex-row justify-start px-4 rounded-xl'
+        } ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+      >
+        <div className="relative">
+          <Icon className={`${isMobile ? 'w-6 h-6' : 'w-5 h-5'} transition-transform group-hover:scale-110`} />
+          {hasUnread && (
+            <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 ${
+              active ? 'bg-white border-primary' : 'bg-primary border-white dark:border-zinc-900'
+            }`} />
+          )}
+        </div>
+        
+        <span className={isMobile ? 'text-[10px] font-bold uppercase tracking-wider' : 'text-sm font-medium ml-3'}>
+          {label}
+        </span>
+
+        {/* Animated Background Pill */}
+        {active && (
+          <motion.div
+            layoutId="activeNav"
+            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 rounded-2xl"
+            style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+          />
         )}
-      </span>
-      <span className="mt-1 text-[11px] leading-none">{label}</span>
+      </motion.div>
     </Link>
   );
 }

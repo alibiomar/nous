@@ -74,8 +74,6 @@ async function flattenToBlob(
   overlayCanvas: HTMLCanvasElement,
   textItems: TextItem[],
 ): Promise<Blob> {
-  // Output at the stage's natural size — no client-side 9:16 crop.
-  // The server (Cloudinary) applies ar_9:16,c_fill for the final crop.
   const outW = overlayCanvas.width;
   const outH = overlayCanvas.height;
 
@@ -83,13 +81,9 @@ async function flattenToBlob(
   out.width = outW; out.height = outH;
   const ctx = out.getContext('2d')!;
 
-  // Draw the full media into the stage bounds
   ctx.drawImage(mediaEl, 0, 0, outW, outH);
-
-  // Bake draw strokes
   ctx.drawImage(overlayCanvas, 0, 0, outW, outH);
 
-  // Bake text labels
   for (const item of textItems) {
     ctx.save();
     ctx.translate(item.x * outW, item.y * outH);
@@ -448,29 +442,38 @@ interface TextLabelProps {
 
 function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange }: TextLabelProps) {
   const elRef = useRef<HTMLSpanElement | null>(null);
+  const itemRef = useRef(item);
+
+  // Maintain reference to latest item avoiding stale closures in touch events
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
     if (e.pointerType === 'touch') return;
     e.preventDefault(); e.stopPropagation();
-    onActivate(item.id);
+    onActivate(itemRef.current.id);
     const stage = stageRef.current; if (!stage) return;
     const rect = stage.getBoundingClientRect();
-    const snapX = item.x, snapY = item.y;
+    const snapX = itemRef.current.x, snapY = itemRef.current.y;
     const sx = e.clientX, sy = e.clientY;
+    
     const onMove = (ev: globalThis.PointerEvent) => {
-      onChange(item.id, {
+      onChange(itemRef.current.id, {
         x: Math.max(0, Math.min(1, snapX + (ev.clientX - sx) / rect.width)),
         y: Math.max(0, Math.min(1, snapY + (ev.clientY - sy) / rect.height)),
       });
     };
+    
     const onUp = () => {
       onDeactivate();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
+    
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [item.id, item.x, item.y, onChange, onActivate, onDeactivate, stageRef]);
+  }, [onChange, onActivate, onDeactivate, stageRef]);
 
   useEffect(() => {
     const el = elRef.current; const stage = stageRef.current;
@@ -483,9 +486,11 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
 
     const onStart = (e: TouchEvent) => {
       e.stopPropagation();
-      onActivate(item.id);
-      snapX = item.x; snapY = item.y;
-      snapScale = item.scale; snapRot = item.rotate;
+      const currentItem = itemRef.current;
+      onActivate(currentItem.id);
+      snapX = currentItem.x; snapY = currentItem.y;
+      snapScale = currentItem.scale; snapRot = currentItem.rotate;
+      
       if (e.touches.length >= 2) {
         const t0 = e.touches[0], t1 = e.touches[1];
         snapDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
@@ -501,13 +506,15 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
     const onMove = (e: TouchEvent) => {
       e.preventDefault(); e.stopPropagation();
       const r = rect();
+      const currentItem = itemRef.current;
+      
       if (e.touches.length >= 2) {
         const t0 = e.touches[0], t1 = e.touches[1];
         const curDist = dist2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         const curAng  = angle2(t0.clientX, t0.clientY, t1.clientX, t1.clientY);
         const curCX   = (t0.clientX + t1.clientX) / 2;
         const curCY   = (t0.clientY + t1.clientY) / 2;
-        onChange(item.id, {
+        onChange(currentItem.id, {
           scale:  Math.max(0.3, Math.min(5, snapScale * (curDist / snapDist))),
           rotate: snapRot + (curAng - snapAng),
           x: Math.max(0, Math.min(1, snapX + (curCX - snapCX) / r.width)),
@@ -515,7 +522,7 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
         });
       } else if (e.touches.length === 1) {
         const t = e.touches[0];
-        onChange(item.id, {
+        onChange(currentItem.id, {
           x: Math.max(0, Math.min(1, snapX + (t.clientX - snapCX) / r.width)),
           y: Math.max(0, Math.min(1, snapY + (t.clientY - snapCY) / r.height)),
         });
@@ -527,7 +534,7 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
       if (e.touches.length === 0) onDeactivate();
       if (e.touches.length === 1) {
         snapCX = e.touches[0].clientX; snapCY = e.touches[0].clientY;
-        snapX = item.x; snapY = item.y;
+        snapX = itemRef.current.x; snapY = itemRef.current.y;
       }
     };
 
@@ -535,13 +542,14 @@ function TextLabel({ item, stageRef, active, onActivate, onDeactivate, onChange 
     el.addEventListener('touchmove',   onMove,  { passive: false });
     el.addEventListener('touchend',    onEnd,   { passive: false });
     el.addEventListener('touchcancel', onEnd,   { passive: false });
+    
     return () => {
       el.removeEventListener('touchstart',  onStart);
       el.removeEventListener('touchmove',   onMove);
       el.removeEventListener('touchend',    onEnd);
       el.removeEventListener('touchcancel', onEnd);
     };
-  }, [item.id, item.x, item.y, item.scale, item.rotate, onActivate, onDeactivate, onChange, stageRef]);
+  }, [onActivate, onDeactivate, onChange, stageRef]);
 
   return (
     <span
@@ -590,10 +598,11 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording]   = useState(false);
   const [cameraError, setCameraError]   = useState(false);
-  const [galleryThumb, setGalleryThumb] = useState<string | null>(null); // last-captured frame preview
+  
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecRef    = useRef<MediaRecorder | null>(null);
   const recordChunks   = useRef<Blob[]>([]);
+  const holdTimeout    = useRef<NodeJS.Timeout | null>(null);
 
   // ── Tools ──────────────────────────────────────────────────────────────────
   const [tool, setTool]             = useState<Tool>('none');
@@ -678,11 +687,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
 
   const startCamera = useCallback(async (facing: 'user' | 'environment') => {
     setCameraError(false);
-    // Stop any existing tracks first
     setCameraStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
     try {
-      // No width/height ideal constraints — avoids digital zoom on mobile.
-      // The camera delivers its native resolution; server crops to 9:16 via Cloudinary.
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: facing } },
         audio: true,
@@ -692,14 +698,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
       if (vid) {
         vid.srcObject = stream;
         await vid.play();
-        // Grab a single frame ~500ms after play to use as gallery button thumbnail
-        setTimeout(() => {
-          if (!vid.videoWidth) return;
-          const c = document.createElement('canvas');
-          c.width = 60; c.height = 80; // small thumbnail
-          c.getContext('2d')!.drawImage(vid, 0, 0, 60, 80);
-          setGalleryThumb(c.toDataURL('image/jpeg', 0.6));
-        }, 500);
       }
     } catch {
       setCameraError(true);
@@ -710,7 +708,6 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     setCameraFacing(f => f === 'user' ? 'environment' : 'user');
   }, []);
 
-  // ── Auto-start / restart camera on open or facing change ───────────────────
   useEffect(() => {
     if (open && !mediaPreview) {
       startCamera(cameraFacing);
@@ -723,11 +720,7 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
     const c = document.createElement('canvas');
     c.width = vid.videoWidth; c.height = vid.videoHeight;
     c.getContext('2d')!.drawImage(vid, 0, 0);
-    // Save small thumbnail for gallery button background
-    const thumb = document.createElement('canvas');
-    thumb.width = 60; thumb.height = 80;
-    thumb.getContext('2d')!.drawImage(vid, 0, 0, 60, 80);
-    setGalleryThumb(thumb.toDataURL('image/jpeg', 0.6));
+
     c.toBlob(blob => {
       if (!blob) return;
       stopCamera();
@@ -854,11 +847,10 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
   }, []);
 
   // ── Post ───────────────────────────────────────────────────────────────────
-  const uploadFile = async (file: File, startOff = 0, isSelfie = false) => {
+  const uploadFile = async (file: File, startOff = 0) => {
     const fd = new FormData();
     fd.append('file', file);
     if (file.type.startsWith('video/')) fd.append('startOffset', startOff.toString());
-    if (isSelfie) fd.append('isSelfie', 'true');
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok || !data.secureUrl) { setPostError(data?.error || 'Upload failed'); return null; }
@@ -873,12 +865,10 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
       if (mediaKind === 'image') {
         const hasDrawOrText = undoStack.current.length > 0 || textItems.length > 0;
         if (hasDrawOrText) {
-          // Bake draw strokes + text overlays onto the image, then let Cloudinary crop
           setUploadStep('Rendering edits…');
           const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems);
           imageFile = await compressImage(new File([blob], 'story.jpg', { type: 'image/jpeg' }));
         } else {
-          // No edits — send raw file; Cloudinary handles 9:16 crop server-side
           setUploadStep('Preparing…');
           imageFile = await compressImage(mediaFile);
         }
@@ -893,10 +883,8 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
         videoFile = mediaFile;
       }
       setUploadStep('Uploading…');
-      // isSelfie: front-camera captures are mirrored by the browser preview;
-      // the server applies a_hflip via Cloudinary to restore natural orientation.
-      const selfie = mediaKind === 'image' && cameraFacing === 'user';
-      const imgR = await uploadFile(imageFile, 0, selfie); if (!imgR) return;
+      
+      const imgR = await uploadFile(imageFile, 0); if (!imgR) return;
       let videoUrl: string | null = null, videoPublicId: string | null = null;
       if (videoFile) {
         const vidR = await uploadFile(videoFile, startOffset); if (!vidR) return;
@@ -921,6 +909,27 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
       reset(); onPosted?.(); onClose();
     } catch { setPostError('Something went wrong.'); }
     finally { setIsPosting(false); setUploadStep(''); }
+  };
+
+  // ── Shutter Button Logic ───────────────────────────────────────────────────
+  const handleShutterDown = () => {
+    if (!cameraActive) return;
+    holdTimeout.current = setTimeout(() => {
+      holdTimeout.current = null;
+      if (!isRecording) startRecording();
+    }, 300); // Trigger record on a slight hold (300ms)
+  };
+
+  const handleShutterUp = () => {
+    if (holdTimeout.current) {
+      // Timeout hasn't fired yet -> Treat as a photo tap
+      clearTimeout(holdTimeout.current);
+      holdTimeout.current = null;
+      if (cameraActive && !isRecording) capturePhoto();
+    } else {
+      // Timeout fired -> Treat as recording stop
+      if (isRecording) stopRecording();
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1015,14 +1024,10 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
                 className="flex flex-col items-center gap-1.5"
               >
                 <div
-                  className="rounded-2xl border-2 border-white/40 overflow-hidden transition-opacity hover:opacity-80"
-                  style={{ width: 48, height: 48, background: galleryThumb ? `url(${galleryThumb}) center/cover` : 'rgba(0,0,0,0.45)' }}
+                  className="rounded-2xl border-2 border-white/40 flex items-center justify-center overflow-hidden transition-opacity hover:opacity-80 bg-black/45"
+                  style={{ width: 48, height: 48 }}
                 >
-                  {!galleryThumb && (
-                    <div className="flex items-center justify-center w-full h-full">
-                      <Upload className="h-5 w-5 text-white/70" />
-                    </div>
-                  )}
+                  <Upload className="h-5 w-5 text-white/70" />
                 </div>
                 <span className="text-[10px] text-white/55 font-medium">Gallery</span>
               </button>
@@ -1031,9 +1036,9 @@ export function StoryCreator({ open, onClose, onPosted }: StoryCreatorProps) {
             {/* Shutter button — center */}
             <button
               type="button"
-              onPointerDown={() => { if (!isRecording && cameraActive) startRecording(); }}
-              onPointerUp={() => { if (isRecording) stopRecording(); }}
-              onClick={() => { if (cameraActive && !isRecording) capturePhoto(); }}
+              onPointerDown={handleShutterDown}
+              onPointerUp={handleShutterUp}
+              onPointerLeave={handleShutterUp}
               className={[
                 'h-20 w-20 rounded-full border-4 transition-all duration-150 flex items-center justify-center',
                 isRecording
