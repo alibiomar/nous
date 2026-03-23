@@ -79,17 +79,11 @@ interface YTSearchResult {
 }
 // ─── YouTube API Loader ───────────────────────────────────────────────────────
 
-// Module-level singleton so we load the script once across HMR/remounts.
 let youtubeApiPromise: Promise<YouTubeNamespace> | null = null;
 
 function loadYouTubeApi(): Promise<YouTubeNamespace> {
-  if (window.YT?.Player) {
-    return Promise.resolve(window.YT);
-  }
-
-  if (youtubeApiPromise) {
-    return youtubeApiPromise;
-  }
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApiPromise) return youtubeApiPromise;
 
   youtubeApiPromise = new Promise<YouTubeNamespace>((resolve, reject) => {
     const previousReadyHandler = window.onYouTubeIframeAPIReady;
@@ -99,13 +93,11 @@ function loadYouTubeApi(): Promise<YouTubeNamespace> {
       if (window.YT?.Player) {
         resolve(window.YT);
       } else {
-        // Reset so a retry is possible on failure.
         youtubeApiPromise = null;
         reject(new Error('YouTube API loaded without player namespace'));
       }
     };
 
-    // Only inject the script if it isn't already in the DOM.
     if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
       const script = document.createElement('script');
       script.src = 'https://www.youtube.com/iframe_api';
@@ -142,7 +134,6 @@ function safeDestroyPlayer(player: YouTubePlayer | null) {
   try {
     player.destroy();
   } catch (error) {
-    // Ignore NotFoundError — the DOM node was already removed.
     if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
       throw error;
     }
@@ -151,10 +142,6 @@ function safeDestroyPlayer(player: YouTubePlayer | null) {
 
 // ─── useSupabase ──────────────────────────────────────────────────────────────
 
-/**
- * Returns a stable Supabase client instance. createClient() must not be called
- * on every render because it creates a new WebSocket connection each time.
- */
 function useSupabase(): SupabaseClient {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => createClient(), []);
@@ -187,14 +174,9 @@ export function GlobalMediaPlayer() {
     initialY: number;
     moved: boolean;
   } | null>(null);
-  // Suppresses the click handler that fires immediately after a drag ends.
   const suppressMiniClickRef = useRef(false);
-
-  // Written by YouTubeSyncPlayer on every state-change event so the parent
-  // always has an accurate timestamp when it needs to build a sync payload.
   const playerCurrentTimeRef = useRef(0);
 
-  // Stable client ID for the lifetime of this component instance.
   const syncClientIdRef = useRef(
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
@@ -262,7 +244,6 @@ export function GlobalMediaPlayer() {
       .channel('media-playback-sync')
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
         if (!isPlaybackSyncPayload(message.payload)) return;
-        // Ignore our own broadcasts.
         if (message.payload.senderId === syncClientIdRef.current) return;
         setExternalSyncEvent(message.payload);
       })
@@ -345,7 +326,6 @@ export function GlobalMediaPlayer() {
   // ── Mini-player toggle (play/pause) ───────────────────────────────────────
 
   const handleMiniToggle = useCallback(async () => {
-    // Drag just ended — swallow this synthetic click.
     if (suppressMiniClickRef.current) {
       suppressMiniClickRef.current = false;
       return;
@@ -355,10 +335,8 @@ export function GlobalMediaPlayer() {
     const nextAction: PlaybackAction = isMiniPlaying ? 'pause' : 'play';
     setIsMiniPlaying(nextAction === 'play');
 
-    // Read the actual player position so the peer seeks to the right place.
     const currentTime = playerCurrentTimeRef.current;
 
-    // Drive the embedded player via the same sync pathway as a remote event.
     setExternalSyncEvent({
       senderId: syncClientIdRef.current,
       mediaId: currentMedia.id,
@@ -420,9 +398,6 @@ export function GlobalMediaPlayer() {
 
       const onPointerUp = (e: PointerEvent) => {
         if (!dragStateRef.current || dragStateRef.current.pointerId !== e.pointerId) return;
-
-        // If no movement occurred, suppressMiniClickRef was never set, so the
-        // click handler (toggle/open) will fire normally.
         dragStateRef.current = null;
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
@@ -436,175 +411,175 @@ export function GlobalMediaPlayer() {
     [isMusicPage, miniPosition]
   );
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-
   const parsedYouTube = useMemo(
     () => (currentMedia ? parseYouTubeUrl(currentMedia.url) : null),
     [currentMedia]
   );
 
-  // ── Early exits ───────────────────────────────────────────────────────────
-
   if (isAuthRoute) return null;
   if (!isMusicPage && !currentMedia && !isLoading) return null;
 
-  // ── Layout ────────────────────────────────────────────────────────────────
-
+  // FIX 1: Lower the z-index to z-10 for the full page container, making it sit BEHIND the z-30 navigation bars.
+  // We use `inset-0` instead of calculating top/bottom limits so the scroll stretches behind transparent navs.
   const containerClasses = isMusicPage
-    ? 'fixed top-20 md:top-0 left-0 md:left-72 right-0 bottom-[80px] md:bottom-0 z-50 overflow-y-auto bg-transparent'
+    ? 'fixed inset-0 md:left-72 z-10 overflow-y-auto bg-transparent'
     : 'fixed z-50';
 
   return (
-    <div
-      className={containerClasses}
-      style={
-        isMusicPage || !miniPosition
-          ? undefined
-          : { left: miniPosition.x, top: miniPosition.y }
-      }
-    >
-      <div className={isMusicPage ? 'mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8' : 'w-full'}>
+    <>
+      <div
+        className={containerClasses}
+        style={
+          isMusicPage || !miniPosition
+            ? undefined
+            : { left: miniPosition.x, top: miniPosition.y }
+        }
+      >
+        {/* FIX 2: We use padding (pt-24 pb-32) so content isn't obscured by the overlapping glass navigation */}
+        <div className={isMusicPage ? 'mx-auto w-full max-w-6xl px-4 pt-24 pb-32 md:px-8 md:py-8' : 'w-full'}>
 
-        {/* ── Music page header ── */}
-        {isMusicPage && (
-          <>
-            <div className="glass-panel mb-6 rounded-3xl p-5 md:p-7">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared listening room</p>
-              <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground md:text-4xl">Media</h1>
-              <p className="mt-2 text-sm text-text-secondary md:text-base">Share YouTube videos and playlists in sync.</p>
+          {/* ── Music page header ── */}
+          {isMusicPage && (
+            <>
+              <div className="glass-panel mb-6 rounded-3xl p-5 md:p-7">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared listening room</p>
+                <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground md:text-4xl">Media</h1>
+                <p className="mt-2 text-sm text-text-secondary md:text-base">Share YouTube videos and playlists in sync.</p>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                {[
-                  { label: 'Room mode', value: 'Synchronized playback' },
-                  { label: 'Source', value: 'YouTube video or playlist' },
-                  { label: 'Status', value: 'Live and collaborative' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
-                  </div>
-                ))}
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {[
+                    { label: 'Room mode', value: 'Synchronized playback' },
+                    { label: 'Source', value: 'YouTube video or playlist' },
+                    { label: 'Status', value: 'Live and collaborative' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              <Button
+                onClick={() => setShowAddModal(true)}
+                className="mb-6 h-12 w-full gap-2 rounded-2xl font-medium"
+              >
+                <Plus className="w-5 h-5" />
+                Share YouTube
+              </Button>
+            </>
+          )}
+
+          {/* ── Mini player (floating bubble) ── */}
+          {!isMusicPage && currentMedia && (
+            <div
+              ref={miniContainerRef}
+              className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
+              onPointerDown={handleMiniPointerDown}
+              style={{ touchAction: 'none' }}
+            >
+              <button
+                type="button"
+                onClick={handleMiniToggle}
+                className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center justify-center transition-transform hover:scale-105"
+                title={isMiniPlaying ? 'Pause' : 'Play'}
+                aria-label={isMiniPlaying ? 'Pause playback' : 'Resume playback'}
+              >
+                {isMiniPlaying ? <Square className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenFullPlayer}
+                className="h-10 w-10 rounded-full bg-card border border-border text-foreground shadow-lg flex items-center justify-center hover:bg-secondary transition-colors"
+                title="Open full player"
+                aria-label="Open full player"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
             </div>
+          )}
 
-            <Button
-              onClick={() => setShowAddModal(true)}
-              className="mb-6 h-12 w-full gap-2 rounded-2xl font-medium"
-            >
-              <Plus className="w-5 h-5" />
-              Share YouTube
-            </Button>
-          </>
-        )}
+          {/* ── Full page: loading skeleton ── */}
+          {isLoading && isMusicPage && (
+            <div className="glass-panel rounded-3xl p-12 text-center">
+              <p className="text-text-secondary">Loading media...</p>
+            </div>
+          )}
 
-        {/* ── Mini player (floating bubble) ── */}
-        {!isMusicPage && currentMedia && (
-          <div
-            ref={miniContainerRef}
-            className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
-            onPointerDown={handleMiniPointerDown}
-            style={{ touchAction: 'none' }}
-          >
-            <button
-              type="button"
-              onClick={handleMiniToggle}
-              className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center justify-center transition-transform hover:scale-105"
-              title={isMiniPlaying ? 'Pause' : 'Play'}
-              aria-label={isMiniPlaying ? 'Pause playback' : 'Resume playback'}
-            >
-              {isMiniPlaying ? <Square className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenFullPlayer}
-              className="h-10 w-10 rounded-full bg-card border border-border text-foreground shadow-lg flex items-center justify-center hover:bg-secondary transition-colors"
-              title="Open full player"
-              aria-label="Open full player"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {/* ── Full page: loading skeleton ── */}
-        {isLoading && isMusicPage && (
-          <div className="glass-panel rounded-3xl p-12 text-center">
-            <p className="text-text-secondary">Loading media...</p>
-          </div>
-        )}
-
-        {/* ── Full page: media info card ── */}
-        {!isLoading && currentMedia && isMusicPage && (
-          <div className="glass-panel border border-border/70  -z-10 overflow-hidden rounded-t-3xl">
-            <div className="p-4 flex items-center gap-3 md:p-6 md:gap-4 md:items-start border-b border-border">
-              <div className="hidden md:flex w-20 h-20 rounded-lg bg-linear-to-br from-primary to-primary/70 items-center justify-center shrink-0">
-                <Film className="w-10 h-10 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-serif font-semibold text-foreground leading-tight wrap-break-word text-2xl">
-                  {currentMedia.title}
-                </p>
-
-                {currentMedia.added_by && (
-                  <p className="text-text-tertiary text-xs mt-2">
-                    Added by{' '}
-                    <span className="text-text-secondary font-medium">{currentMedia.added_by.name}</span>
+          {/* ── Full page: media info card ── */}
+          {!isLoading && currentMedia && isMusicPage && (
+            <div className="glass-panel border border-border/70 -z-10 overflow-hidden rounded-t-3xl">
+              <div className="p-4 flex items-center gap-3 md:p-6 md:gap-4 md:items-start border-b border-border">
+                <div className="hidden md:flex w-20 h-20 rounded-lg bg-linear-to-br from-primary to-primary/70 items-center justify-center shrink-0">
+                  <Film className="w-10 h-10 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-serif font-semibold text-foreground leading-tight wrap-break-word text-2xl">
+                    {currentMedia.title}
                   </p>
-                )}
+
+                  {currentMedia.added_by && (
+                    <p className="text-text-tertiary text-xs mt-2">
+                      Added by{' '}
+                      <span className="text-text-secondary font-medium">{currentMedia.added_by.name}</span>
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ── Full page: empty state ── */}
-        {!isLoading && !currentMedia && isMusicPage && (
-          <div className="glass-panel rounded-3xl p-12 text-center">
-            <p className="text-text-secondary mb-2">No media playing yet</p>
-            <p className="text-sm text-text-tertiary">Click "Share YouTube" to add content</p>
-          </div>
-        )}
+          {/* ── Full page: empty state ── */}
+          {!isLoading && !currentMedia && isMusicPage && (
+            <div className="glass-panel rounded-3xl p-12 text-center">
+              <p className="text-text-secondary mb-2">No media playing yet</p>
+              <p className="text-sm text-text-tertiary">Click "Share YouTube" to add content</p>
+            </div>
+          )}
 
-        {/* ── YouTube player (persistent across routes, hidden when mini) ── */}
-        {currentMedia && parsedYouTube && (
-          <div
-            className={
-              isMusicPage
-                ? 'glass-panel border border-t-0 border-border/70 z-10 overflow-hidden rounded-b-3xl'
-                : 'absolute overflow-hidden pointer-events-none'
-            }
-            style={isMusicPage ? undefined : { left: -10000, top: 0, height: 1, width: 1 }}
-          >
-            <YouTubeSyncPlayer
-              mediaId={currentMedia.id}
-              parsedUrl={parsedYouTube}
-              syncEvent={externalSyncEvent}
-              onPlaybackChange={handlePlaybackChange}
-              currentTimeRef={playerCurrentTimeRef}
-              isMusicPage={isMusicPage}
-              className={isMusicPage ? 'w-full z-10' : 'h-px w-px'}
-            />
-          </div>
-        )}
+          {/* ── YouTube player (persistent across routes, hidden when mini) ── */}
+          {currentMedia && parsedYouTube && (
+            <div
+              className={
+                isMusicPage
+                  ? 'glass-panel border border-t-0 border-border/70 z-10 overflow-hidden rounded-b-3xl'
+                  : 'absolute overflow-hidden pointer-events-none'
+              }
+              style={isMusicPage ? undefined : { left: -10000, top: 0, height: 1, width: 1 }}
+            >
+              <YouTubeSyncPlayer
+                mediaId={currentMedia.id}
+                parsedUrl={parsedYouTube}
+                syncEvent={externalSyncEvent}
+                onPlaybackChange={handlePlaybackChange}
+                currentTimeRef={playerCurrentTimeRef}
+                isMusicPage={isMusicPage}
+                className={isMusicPage ? 'w-full z-10' : 'h-px w-px'}
+              />
+            </div>
+          )}
 
-        {/* ── Invalid URL fallback ── */}
-        {currentMedia && !parsedYouTube && isMusicPage && (
-          <div className="glass-panel border border-t-0 border-border/70 rounded-b-3xl p-6">
-            <p className="text-sm text-text-secondary text-center">Invalid YouTube URL.</p>
-          </div>
-        )}
-
-        {/* ── Add-media modal ── */}
-        {showAddModal && isMusicPage && (
-          <AddMediaModal
-            onClose={() => setShowAddModal(false)}
-            onSuccess={() => {
-              setShowAddModal(false);
-              fetchCurrentMedia();
-            }}
-          />
-        )}
+          {/* ── Invalid URL fallback ── */}
+          {currentMedia && !parsedYouTube && isMusicPage && (
+            <div className="glass-panel border border-t-0 border-border/70 rounded-b-3xl p-6">
+              <p className="text-sm text-text-secondary text-center">Invalid YouTube URL.</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* FIX 3: We moved the AddMediaModal OUTSIDE the player container. 
+          This breaks it out of the new z-10 stacking context so it can safely overlay the z-30 Navigation. */}
+      {showAddModal && isMusicPage && (
+        <AddMediaModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            fetchCurrentMedia();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -623,7 +598,6 @@ function YouTubeSyncPlayer({
   parsedUrl: { videoId: string | null; playlistId: string | null };
   syncEvent: PlaybackSyncPayload | null;
   onPlaybackChange: (action: PlaybackAction, currentTime: number, mediaId: string) => Promise<void>;
-  /** Written on every state-change so the parent always has the live position. */
   currentTimeRef: React.MutableRefObject<number>;
   isMusicPage: boolean;
   className?: string;
@@ -631,20 +605,14 @@ function YouTubeSyncPlayer({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const ytRef = useRef<YouTubeNamespace | null>(null);
-  // Prevents the player's own state-change events from being re-broadcast while
-  // we are applying a remote sync command.
   const applyingRemoteSyncRef = useRef(false);
   const isPlayingRef = useRef(false);
-  // True when the browser backgrounded the tab and auto-paused the player.
   const hiddenAutoPausedRef = useRef(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
-
-  // ── Initialise / reinitialise the YT player ───────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
 
-    // Reset error and playback tracking on every new video.
     setPlayerError(null);
     isPlayingRef.current = false;
     hiddenAutoPausedRef.current = false;
@@ -674,8 +642,6 @@ function YouTubeSyncPlayer({
               if (applyingRemoteSyncRef.current || !playerRef.current || !ytRef.current) return;
 
               const currentTime = playerRef.current.getCurrentTime();
-              // Always keep the parent's ref up-to-date so it can build accurate
-              // sync payloads without needing to call into the player directly.
               currentTimeRef.current = currentTime;
 
               if (event.data === ytRef.current.PlayerState.PLAYING) {
@@ -686,8 +652,6 @@ function YouTubeSyncPlayer({
               }
 
               if (event.data === ytRef.current.PlayerState.PAUSED) {
-                // Background-tab auto-pause — keep playing silently; do not
-                // broadcast a pause event to the other party.
                 if (document.hidden && isPlayingRef.current) {
                   hiddenAutoPausedRef.current = true;
                   playerRef.current.unMute?.();
@@ -714,11 +678,7 @@ function YouTubeSyncPlayer({
       safeDestroyPlayer(playerRef.current);
       playerRef.current = null;
     };
-  // onPlaybackChange is stable (useCallback with no deps in parent) so it's
-  // safe to include; changing videoId/playlistId/mediaId recreates the player.
   }, [parsedUrl.videoId, parsedUrl.playlistId, mediaId, onPlaybackChange]);
-
-  // ── Restore playback after a tab-visibility change ────────────────────────
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -726,7 +686,6 @@ function YouTubeSyncPlayer({
       if (!player) return;
 
       if (document.hidden && isPlayingRef.current) {
-        // Some browsers (iOS Safari) autopause on hide — proactively resume.
         player.unMute?.();
         player.playVideo();
       } else if (!document.hidden && hiddenAutoPausedRef.current) {
@@ -744,8 +703,6 @@ function YouTubeSyncPlayer({
     };
   }, []);
 
-  // ── Apply remote sync commands ────────────────────────────────────────────
-
   useEffect(() => {
     if (!syncEvent || syncEvent.mediaId !== mediaId || !playerRef.current) return;
     if (typeof playerRef.current.seekTo !== 'function') return;
@@ -754,8 +711,6 @@ function YouTubeSyncPlayer({
 
     applyingRemoteSyncRef.current = true;
 
-    // Avoid seeking if we're already within 2 s to prevent disruptive jumps
-    // during normal play → pause → play cycles where currentTime is 0.
     const delta = Math.abs(playerRef.current.getCurrentTime() - safeTime);
     if (delta > 2) {
       playerRef.current.seekTo(safeTime, true);
@@ -778,8 +733,6 @@ function YouTubeSyncPlayer({
 
     return () => window.clearTimeout(timeout);
   }, [syncEvent, mediaId]);
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   if (playerError) {
     return (
@@ -810,7 +763,6 @@ function AddMediaModal({
   const [addError, setAddError]   = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
  
-  // Debounced search
   const handleQueryChange = (val: string) => {
     setQuery(val);
     setSearchErr('');
@@ -852,7 +804,6 @@ function AddMediaModal({
     finally { setIsAdding(false); }
   };
  
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !isAdding) onClose(); };
     window.addEventListener('keydown', handler);
@@ -861,13 +812,11 @@ function AddMediaModal({
  
   return (
     <div
-      // FIX 1: Changed z-60 to z-[100] so it parses correctly and floats above everything
       className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50"
       onClick={e => { if (e.target === e.currentTarget && !isAdding) onClose(); }}
     >
-      <div className="glass-panel-strong w-full z-60 sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-3xl border border-border/70 max-h-[85vh] flex flex-col">
+      <div className="glass-panel-strong w-full sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-3xl border border-border/70 max-h-[85vh] flex flex-col">
  
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/60 shrink-0">
           <div className="flex items-center gap-3">
             <div className="rounded-xl border border-border/60 bg-primary/10 p-2">
@@ -884,10 +833,7 @@ function AddMediaModal({
           </button>
         </div>
  
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
- 
-          {/* Search input */}
           {!picked && (
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -896,7 +842,6 @@ function AddMediaModal({
                 value={query}
                 onChange={e => handleQueryChange(e.target.value)}
                 placeholder="Song name, artist, lyrics…"
-                // FIX 2: Added text-base sm:text-sm to prevent iOS Safari auto-zoom bugs
                 className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-4 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors"
               />
               {searching && (
@@ -909,7 +854,6 @@ function AddMediaModal({
             <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{searchErr}</p>
           )}
  
-          {/* Results */}
           {results.length > 0 && !picked && (
             <div className="space-y-1.5">
               {results.map(v => (
@@ -934,7 +878,6 @@ function AddMediaModal({
             </div>
           )}
  
-          {/* Picked card */}
           {picked && (
             <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/8 p-2.5">
               {picked.thumbnail ? (
@@ -962,7 +905,6 @@ function AddMediaModal({
             <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{addError}</p>
           )}
  
-          {/* Empty hint */}
           {!picked && results.length === 0 && !searching && !searchErr && (
             <div className="text-center py-8">
               <Music className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
@@ -971,9 +913,7 @@ function AddMediaModal({
           )}
         </div>
  
-        {/* Footer */}
-        {/* FIX 3: Replaced py-4 with pt-4 pb-8 sm:pb-4 to clear mobile gesture areas */}
-        <div className="flex gap-3 px-5 pt-4 pb-8 sm:pb-4 border-t border-border/60 shrink-0 z-50">
+        <div className="flex gap-3 px-5 pt-4 pb-8 sm:pb-4 border-t border-border/60 shrink-0">
           <Button onClick={onClose} variant="outline" className="flex-1 rounded-2xl" disabled={isAdding}>
             Cancel
           </Button>
