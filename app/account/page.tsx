@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useUser } from '@/contexts/user';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,23 +35,18 @@ export default function AccountPage() {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
 
+  const { user, isLoading: userLoading } = useUser();
+
   useEffect(() => {
-    const loadProfile = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch('/api/auth/profile');
-        if (response.status === 401) { router.push('/login'); return; }
-        const data = await response.json();
-        if (!response.ok) { setError(data.error || 'Failed to load profile'); return; }
-        setEmail(data.user.email || '');
-        setName(data.user.name || '');
-        setBirthday(data.user.birthday || '');
-        setAvatarUrl(data.user.avatarUrl || null);
-      } catch { setError('Failed to load profile'); }
-      finally { setIsLoading(false); }
-    };
-    loadProfile();
-  }, [router]);
+    setIsLoading(userLoading);
+    if (!userLoading) {
+      if (!user) { router.push('/login'); return; }
+      setEmail(user.email || '');
+      setName(user.name || '');
+      setBirthday(user.birthday || '');
+      setAvatarUrl(user.avatarUrl || null);
+    }
+  }, [user, userLoading, router]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setError(''); setSuccess('');
