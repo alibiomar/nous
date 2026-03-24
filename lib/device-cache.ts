@@ -48,7 +48,7 @@ export function writeDeviceCache<T>(key: string, value: T, ttlMs: number) {
     };
     window.localStorage.setItem(key, JSON.stringify(payload));
   } catch {
-    // Ignore storage quota and serialization issues.
+    // ignore quota exceeded or other errors
   }
 }
 
@@ -60,6 +60,28 @@ export function removeDeviceCache(key: string) {
   try {
     window.localStorage.removeItem(key);
   } catch {
-    // Ignore storage access errors.
+    // ignore
+  }
+}
+
+export function clearAllDeviceCache() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    // Find all keys that belong to our app cache (starting with 'nous:')
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith('nous:')) {
+        keysToRemove.push(key);
+      }
+    }
+
+    // Remove them securely
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // ignore
   }
 }

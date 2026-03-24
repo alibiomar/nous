@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-
+import { clearAllDeviceCache } from '@/lib/device-cache';
 export interface User {
   id: string;
   email: string;
@@ -97,7 +97,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         cache: 'no-store',
       });
       setUser(null);
-      sessionStorage.removeItem('nous:call-session');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('nous:call-session');
+        clearAllDeviceCache(); // <--- Safely deletes all messages, feeds, and private data
+      }
       router.replace('/login');
       router.refresh();
     } catch (err) {
