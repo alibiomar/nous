@@ -10,7 +10,7 @@ const supabase = createServiceClient(
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
-const MAX_IMAGE_SIZE     = 5 * 1024 * 1024;   // 5 MB
+const MAX_IMAGE_SIZE     = 10 * 1024 * 1024;   // 10 MB
 const MAX_VIDEO_SIZE     = 50 * 1024 * 1024;  // 50 MB
 const MAX_VIDEO_DURATION = 30;                // seconds
 

@@ -68,7 +68,7 @@ export function RealtimeChatWrapper({
   useEffect(() => {
     const loadMessages = async () => {
       try {
-        const res = await fetch(`/api/messages`, { cache: 'no-store' });
+        const res = await fetch(`/api/messages`);
         if (!res.ok) return;
         
         const raw = await res.json();
@@ -77,6 +77,7 @@ export function RealtimeChatWrapper({
           sender_id: msg.sender_id,
           content: msg.content,
           image_url: msg.image_url || null,
+          is_edited: msg.is_edited ?? false,  // ← add this
           user: {
             id: msg.sender?.id,
             name: msg.sender?.name || 'Unknown',

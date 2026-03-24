@@ -14,6 +14,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const session = await getSession();
+    
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -36,13 +37,12 @@ export async function PATCH(
         { status: 400 }
       );
     }
-
     const { data: message, error } = await supabase
       .from('messages')
-      .update({ content: encryptValue(content) })
+      .update({ content: encryptValue(content), is_edited: true })
       .eq('id', id)
       .eq('sender_id', session.userId)
-      .select('id, content, recipient_id')
+      .select('id, content, recipient_id, is_edited')
       .single();
 
     if (error || !message) {

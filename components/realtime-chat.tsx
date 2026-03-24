@@ -263,12 +263,15 @@ const handleSendMessage = useCallback(
               if (data.secureUrl) resolve(data.secureUrl)
               else reject(new Error('No secureUrl'))
             } else {
+                  console.error('Upload 400 body:', xhr.responseText)  // ← add this
+
               reject(new Error(`Upload failed: ${xhr.status}`))
             }
           })
 
           xhr.addEventListener('error', () => reject(new Error('Network error')))
           xhr.open('POST', '/api/upload')
+          xhr.withCredentials = true   // ← add this
           xhr.send(formData)
         })
 
@@ -329,7 +332,7 @@ const handleSendMessage = useCallback(
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
       try {
-        const response = await fetch(`/api/messages?id=${messageId}`, {
+        const response = await fetch(`/api/messages/${messageId}`, {
           method: 'DELETE',
         })
 
@@ -352,39 +355,34 @@ const handleSendMessage = useCallback(
     },
     [deleteMessageLocally, broadcastDeleteMessage]
   )
+const handleEditMessage = useCallback(
+  async (messageId: string, newContent: string) => {
+    updateMessageLocally(messageId, { content: newContent, is_edited: true })
 
-  const handleEditMessage = useCallback(
-    async (messageId: string, newContent: string) => {
-      try {
-        // Immediately edit in sender's view
-        updateMessageLocally(messageId, { content: newContent, is_edited: true })
+    try {
+      const response = await fetch(`/api/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent }),
+      })
 
-        const response = await fetch('/api/messages', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'edit',
-            messageId,
-            content: newContent,
-          }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
-          console.error('Edit API error:', response.status, errorData)
-          throw new Error(`Failed to edit message: ${response.status}`)
-        }
-
-        // Broadcast the edit to all connected clients
-        await broadcastEditMessage(messageId, newContent)
-        window.dispatchEvent(new Event('messages:changed'))
-      } catch (error) {
-        console.error('Failed to edit message:', error)
-        throw error
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Edit API error:', response.status, errorData)
+        throw new Error(`Failed to edit message: ${response.status}`)
       }
-    },
-    [updateMessageLocally, broadcastEditMessage]
-  )
+
+      // ADD THIS — confirm broadcast is reached
+      console.log('Broadcasting edit, isConnected:', isConnected)
+      await broadcastEditMessage(messageId, newContent)
+      window.dispatchEvent(new Event('messages:changed'))
+    } catch (error) {
+      console.error('Failed to edit message:', error)
+      throw error
+    }
+  },
+  [updateMessageLocally, broadcastEditMessage, isConnected] // ← isConnected added
+)
 
   const handleSelectImageFile = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
