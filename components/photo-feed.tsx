@@ -46,6 +46,9 @@ let moduleCachedAt = 0;
 export function PhotoFeed({ refreshSignal = 0, currentUserId }: PhotoFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Stays false until we've received at least one real response (cache or network).
+  // Prevents the empty-state flash while the first fetch is in flight.
+  const [isInitialized, setIsInitialized] = useState(false);
   const isInitialMount = useRef(true);
 
   useEffect(() => {
@@ -65,10 +68,12 @@ const fetchPosts = async (force = false) => {
   if (!force && moduleCachedPosts !== null && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
     setPosts(moduleCachedPosts);
     setIsLoading(false);
+    setIsInitialized(true);
     return;
   }
 
-  // 2. Device cache: show immediately, then always continue to network
+  // 2. Device cache: show immediately while network loads in background.
+  //    This populates posts so the empty-state never flashes for cached users.
   if (!force) {
     const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
     if (cachedPosts !== null) {
@@ -76,6 +81,7 @@ const fetchPosts = async (force = false) => {
       moduleCachedPosts = cachedPosts;
       moduleCachedAt = now;
       setIsLoading(false);
+      setIsInitialized(true);
       // Don't return — fall through to network refresh in background
     }
   }
@@ -84,8 +90,12 @@ const fetchPosts = async (force = false) => {
     const response = await fetch('/api/posts');
     if (response.ok) {
       const data = await response.json();
-      // Always update state from network — removes the buggy top-ID guard
-      setPosts(data);
+      // Only update posts from network if it returned results, OR if we have
+      // no cached posts to show — prevents a slow/empty network response from
+      // wiping out a valid cache hit.
+      if (data.length > 0 || !isInitialized) {
+        setPosts(data);
+      }
       moduleCachedPosts = data;
       moduleCachedAt = Date.now();
       writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
@@ -94,6 +104,7 @@ const fetchPosts = async (force = false) => {
     console.error('Failed to fetch posts:', error);
   } finally {
     setIsLoading(false);
+    setIsInitialized(true);
   }
 };
   const handlePostRemoved = (postId: string) => {
@@ -109,12 +120,12 @@ const fetchPosts = async (force = false) => {
   return (
     <div className="space-y-6">
       <div className="space-y-6">
-        {isLoading ? (
+        {isLoading && !isInitialized ? (
           <div className="flex items-center justify-center gap-2 py-12 text-text-secondary">
             <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
             <span>Loading moments...</span>
           </div>
-        ) : posts.length === 0 ? (
+        ) : posts.length === 0 && isInitialized ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
             <p className="text-text-secondary mb-2">No moments yet</p>
             <p className="text-sm text-text-tertiary">

@@ -149,7 +149,7 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
                 <div className="h-full w-full overflow-hidden rounded-full border-2 border-background">
                   {latest.author.avatar_url ? (
                     <img
-                      src={latest.image_url}
+                      src={latest.author.avatar_url}
                       alt={latest.author.name}
                       className="h-full w-full object-cover"
                     />

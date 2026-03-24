@@ -9,6 +9,9 @@ import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useCurrentUserName } from '@/hooks/use-current-user-name';
+import { useCurrentUserImage } from '@/hooks/use-current-user-image';
+
 const NAV_ITEMS: { href: string; icon: React.ElementType; label: string; id?: string }[] = [
   { href: '/feed',     icon: Heart,         label: 'Moments' },
   { href: '/messages', icon: MessageCircle, label: 'Messages', id: 'messages' },
@@ -32,6 +35,10 @@ export function Navigation() {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isNavigating, setIsNavigating] = React.useState(false);
   const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const userName = useCurrentUserName();
+  const userImage = useCurrentUserImage();
+
   React.useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!(
@@ -77,7 +84,7 @@ export function Navigation() {
 
       {/* Desktop Sidebar */}
       <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col overflow-hidden rounded-3xl p-4 md:flex">
-                <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-primary/40 blur-2xl" />
 
         <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
@@ -105,7 +112,7 @@ export function Navigation() {
         >
           <CurrentUserAvatar size="md" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">You</p>
+            <p className="truncate text-sm font-semibold">{userName}</p>
             <p className="text-xs font-medium text-muted-foreground">Profile</p>
           </div>
         </Link>
@@ -181,18 +188,18 @@ const NavAnchor = React.memo(function NavAnchor({
           {label}
         </span>
 
-<AnimatePresence>
-  {active && (
-    <motion.span
-      layoutId={`activeNav-${variant}`}
-      className={`absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 ${
-        isMobile ? 'rounded-2xl' : 'rounded-xl'
-      }`}
-      style={{ willChange: 'transform' }}
-      transition={{ type: 'tween', ease: 'easeInOut', duration: 0.18 }}
-    />
-  )}
-</AnimatePresence>
+        <AnimatePresence>
+          {active && (
+            <motion.span
+              layoutId={`activeNav-${variant}`}
+              className={`absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 ${
+                isMobile ? 'rounded-2xl' : 'rounded-xl'
+              }`}
+              style={{ willChange: 'transform' }}
+              transition={{ type: 'tween', ease: 'easeInOut', duration: 0.18 }}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </Link>
   );

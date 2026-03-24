@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 
 interface SharePhotoModalProps {
   open: boolean;
@@ -130,6 +131,7 @@ export function SharePhotoModal({ open, onOpenChange, onPosted }: SharePhotoModa
   const [isUploading, setIsUploading] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [uploadStep, setUploadStep] = useState('');
+  const { sendPushNotification } = usePushNotifications();
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -180,6 +182,11 @@ export function SharePhotoModal({ open, onOpenChange, onPosted }: SharePhotoModa
         setError(d?.error || 'Failed to post photo');
         return;
       }
+
+      const notifBody = caption.trim()
+        ? `posted a new photo — ${caption.trim()}`
+        : 'posted a new moment 📸';
+      await sendPushNotification(notifBody, { url: '/feed' });
 
       resetForm();
       onOpenChange(false);

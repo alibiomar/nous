@@ -6,8 +6,10 @@ import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
 import { GlobalCursors } from '@/components/global-cursors'
 import { GlobalMediaPlayer } from '@/components/global-media-player'
+import { SplashScreen } from '@/components/splash-screen'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
+
 const cormorant = Cormorant_Garamond({ 
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
@@ -52,9 +54,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${cormorant.variable} ${dmSans.variable}`} suppressHydrationWarning>
-      <body className="font-sans antialiased ">
+      <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <UserProvider>
+            <SplashScreen />
             <UnreadMessagesProvider>
               <CallProvider>
                 <Navigation />

@@ -886,30 +886,15 @@ const { sendPushNotification } = usePushNotifications();
   }, []);
 
   // ── Post ───────────────────────────────────────────────────────────────────
-  const uploadFile = async (file: File, startOff = 0, uploadAsSelfie = false) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    if (file.type.startsWith('video/')) fd.append('startOffset', startOff.toString());
-    
-    // Only pass isSelfie flag to Cloudinary if requested (mostly for video where we can't burn the flip in client)
-    if (uploadAsSelfie) fd.append('isSelfie', 'true');
-    
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (!res.ok || !data.secureUrl) { setPostError(data?.error || 'Upload failed'); return null; }
-    return { url: data.secureUrl as string, publicId: data.publicId as string };
-  };
-
-  const handlePost = async () => {
+ const handlePost = async () => {
     if (!mediaFile) return;
     setPostError(''); setIsPosting(true);
     try {
       let imageFile: File; let videoFile: File | null = null;
       if (mediaKind === 'image') {
         const hasDrawOrText = undoStack.current.length > 0 || textItems.length > 0;
-        
-        // If it's a selfie or has edits, we need to flatten the image canvas 
-        // to bake in the CSS transform and text edits
+ 
+        // If it's a selfie or has edits, flatten the canvas to bake in the flip + overlays
         if (hasDrawOrText || isSelfie) {
           setUploadStep(hasDrawOrText ? 'Rendering edits…' : 'Processing image…');
           const blob = await flattenToBlob(editImgRef.current!, canvasRef.current!, textItems, isSelfie);
@@ -921,52 +906,42 @@ const { sendPushNotification } = usePushNotifications();
       } else {
         setUploadStep('Creating thumbnail…');
         const vid = editVidRef.current!;
-        const t = document.createElement('canvas');
-        t.width = vid.videoWidth || 480; t.height = vid.videoHeight || 854;
+        const t   = document.createElement('canvas');
+        t.width   = vid.videoWidth || 480; t.height = vid.videoHeight || 854;
         const ctx = t.getContext('2d')!;
-        
-        // Mirror the thumbnail natively so it matches the requested Cloudinary flipped video
-        if (isSelfie) {
-          ctx.translate(t.width, 0);
-          ctx.scale(-1, 1);
-        }
+ 
+        // Mirror thumbnail to match Cloudinary-flipped video
+        if (isSelfie) { ctx.translate(t.width, 0); ctx.scale(-1, 1); }
         ctx.drawImage(vid, 0, 0, t.width, t.height);
-        const tb = await new Promise<Blob>(r => t.toBlob(b => r(b!), 'image/jpeg', 0.85));
+        const tb  = await new Promise<Blob>(r => t.toBlob(b => r(b!), 'image/jpeg', 0.85));
         imageFile = new File([tb], 'thumb.jpg', { type: 'image/jpeg' });
         videoFile = mediaFile;
       }
+ 
       setUploadStep('Uploading…');
-      
-      // Send isSelfie = false since we already physically mirrored the image file in the logic above
-      const imgR = await uploadFile(imageFile, 0, false); 
-      if (!imgR) return;
-      
-      let videoUrl: string | null = null, videoPublicId: string | null = null;
+      const fd = new FormData();
+      fd.append('image_file', imageFile);
+      // isSelfie is false for images — the flip was already baked in above.
+      // For video we pass it through so the server can apply a_hflip via Cloudinary.
       if (videoFile) {
-        // Send isSelfie = true so Cloudinary backend transforms the video, since we don't edit it client-side
-        const vidR = await uploadFile(videoFile, startOffset, isSelfie); 
-        if (!vidR) return;
-        videoUrl = vidR.url; videoPublicId = vidR.publicId;
+        fd.append('video_file',  videoFile);
+        fd.append('startOffset', startOffset.toString());
+        if (isSelfie) fd.append('isSelfie', 'true');
       }
+      if (caption.trim())                   fd.append('caption',           caption.trim());
+      if (musicSelection?.videoId)          fd.append('youtube_video_id',  musicSelection.videoId);
+      if (musicSelection?.title)            fd.append('youtube_title',     musicSelection.title);
+      if (musicSelection?.startSec != null) {
+        fd.append('youtube_start_sec', musicSelection.startSec.toString());
+        fd.append('youtube_end_sec',   (musicSelection.startSec + 30).toString());
+      }
+ 
       setUploadStep('Posting…');
-      const res = await fetch('/api/stories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_url: imgR.url, image_public_id: imgR.publicId,
-          video_url: videoUrl, video_public_id: videoPublicId,
-          media_type: videoUrl ? 'video' : 'image',
-          caption: caption.trim() || null,
-          youtube_video_id:  musicSelection?.videoId  ?? null,
-          youtube_title:     musicSelection?.title    ?? null,
-          youtube_start_sec: musicSelection?.startSec ?? null,
-          youtube_end_sec:   musicSelection ? musicSelection.startSec + 30 : null,
-        }),
-      });
-
-
+      const res = await fetch('/api/stories', { method: 'POST', body: fd });
+ 
+ 
       if (!res.ok) { const d = await res.json().catch(() => null); setPostError(d?.error || 'Failed'); return; }
-
+ 
       const senderName = currentUser?.name ?? 'Someone';
       const senderId = currentUser?.id ?? '';
       void sendPushNotification(
@@ -983,6 +958,7 @@ const { sendPushNotification } = usePushNotifications();
     } catch { setPostError('Something went wrong.'); }
     finally { setIsPosting(false); setUploadStep(''); }
   };
+ 
 
   // ── Shutter Button Logic ───────────────────────────────────────────────────
   const handleShutterDown = () => {

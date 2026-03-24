@@ -41,22 +41,37 @@ export function decryptValue(value: string | null | undefined) {
     return value;
   }
 
-  const [, , ivB64, authTagB64, payloadB64] = value.split(':');
+  // Format: enc:v1:<iv>:<authTag>:<payload>
+  // Join remaining parts so a base64 payload that contains colons is preserved.
+  const parts = value.split(':');
+  const ivB64      = parts[2];
+  const authTagB64 = parts[3];
+  const payloadB64 = parts.slice(4).join(':');
 
   if (!ivB64 || !authTagB64 || !payloadB64) {
-    throw new Error('Encrypted value has invalid format');
+    // Malformed encrypted value — return null rather than crashing the entire
+    // API response. Handles rows written by an older schema or partial migration.
+    console.error('decryptValue: malformed encrypted value, returning null', value.slice(0, 32));
+    return null;
   }
 
-  const key = getKey();
-  const iv = Buffer.from(ivB64, 'base64');
-  const authTag = Buffer.from(authTagB64, 'base64');
-  const payload = Buffer.from(payloadB64, 'base64');
+  try {
+    const key = getKey();
+    const iv = Buffer.from(ivB64, 'base64');
+    const authTag = Buffer.from(authTagB64, 'base64');
+    const payload = Buffer.from(payloadB64, 'base64');
 
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
 
-  const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
-  return decrypted.toString('utf8');
+    const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (err) {
+    // Decryption failure (wrong key, corrupted data) — return null rather than
+    // taking down the whole API response.
+    console.error('decryptValue: decryption failed, returning null', err);
+    return null;
+  }
 }
 
 export function encryptFields<T extends Record<string, unknown>, K extends keyof T>(

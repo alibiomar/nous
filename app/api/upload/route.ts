@@ -17,14 +17,14 @@ function createCloudinarySignature(params: Record<string, string>, apiSecret: st
 // ── Cloudinary URL transformations ───────────────────────────────────────────
 
 function applyImageTransformations(url: string, isSelfie: boolean): string {
-  // ar_9:16,c_fill  → center-crop to portrait 9:16
   // w_1080          → cap width at 1080 px
   // q_auto,f_auto   → optimised quality + format
   // a_hflip         → flip selfie (front-camera) images back to natural orientation
+  // No portrait crop — stories use /api/upload/story for that.
   const flip = isSelfie ? ',a_hflip' : '';
   return url.replace(
     '/image/upload/',
-    `/image/upload/ar_9:16,c_fill,w_1080,q_auto,f_auto${flip}/`,
+    `/image/upload/w_1080,q_auto,f_auto${flip}/`,
   );
 }
 
