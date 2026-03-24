@@ -72,11 +72,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           // Execute background fetches without blocking the UI
           Promise.allSettled(promises);
           // --------------------
-
-          return;
+        } else {
+          setUser(null);
         }
-
-        setUser(null);
       } catch (err) {
         console.error('Failed to fetch session:', err);
       } finally {
