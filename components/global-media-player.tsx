@@ -441,7 +441,10 @@ export function GlobalMediaPlayer() {
           {/* ── Music page header ── */}
           {isMusicPage && (
             <>
-              <div className="glass-panel mb-6 rounded-3xl p-5 md:p-7">
+                    <div className="glass-panel mb-6 relative overflow-hidden rounded-3xl border border-border/70 p-5 md:p-7">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-secondary/60 blur-2xl" />
+
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Shared listening room</p>
                 <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground md:text-4xl">Media</h1>
                 <p className="mt-2 text-sm text-text-secondary md:text-base">Share YouTube videos and playlists in sync.</p>

@@ -217,8 +217,12 @@ export function RealtimeChatWrapper({
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden bg-background">
+      
       <div className="grid h-full gap-4 px-3 pb-3 md:gap-5 md:px-6 md:py-4">
-        <div className="glass-panel flex h-full min-h-0 flex-col rounded-3xl border border-border/70 p-3 md:p-4">
+        <div className="glass-panel flex h-full overflow-hidden min-h-0 flex-col rounded-3xl border border-border/70 p-3 md:p-4">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-primary/60 blur-2xl" />
+
           <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">

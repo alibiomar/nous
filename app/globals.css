@@ -4,35 +4,36 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Warm Social Glass Palette */
-  --coral: #fa8b79;
-  --apricot: #f2c1a5;
-  --espresso: #3a362d;
-  --ivory: #eae9e4;
-  --mist: rgba(234, 233, 228, 0.64);
-  --mist-strong: rgba(234, 233, 228, 0.8);
-  --glass-edge: rgba(255, 255, 255, 0.45);
-  --glass-shadow: 0 16px 40px rgba(58, 54, 45, 0.12);
-  --bg-primary: var(--ivory);
-  --bg-secondary: #f5e8df;
-  --bg-tertiary: #f8ddd0;
-  --text-primary: var(--espresso);
-  --text-secondary: #5a554a;
-  --text-tertiary: #746f64;
-  --border-light: rgba(58, 54, 45, 0.16);
-  --border-medium: rgba(58, 54, 45, 0.24);
-  --accent-color: var(--coral);
-  --accent-light: #ffe9df;
-  --accent-dark: #dc6e5c;
-  --success: #3f8a5f;
-  --error: #bf4e45;
+  /* ── Light: Warm Social Glass ── */
+  --coral: #f4705b;
+  --apricot: #f0b998;
+  --espresso: #2e2a22;
+  --ivory: #f0ede7;
+  --mist: rgba(240, 237, 231, 0.64);
+  --mist-strong: rgba(240, 237, 231, 0.82);
+  --glass-edge: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 16px 40px rgba(46, 42, 34, 0.1);
 
-  /* Design Tokens */
+  --bg-primary: #f0ede7;
+  --bg-secondary: #e8ddd3;
+  --bg-tertiary: #dfd0c4;
+  --text-primary: #2e2a22;
+  --text-secondary: #4e4840;
+  --text-tertiary: #7a6f63;
+  --border-light: rgba(46, 42, 34, 0.14);
+  --border-medium: rgba(46, 42, 34, 0.24);
+  --accent-color: #f4705b;
+  --accent-light: #fde8e3;
+  --accent-dark: #d4503c;
+  --success: #2e7d52;
+  --error: #c0392b;
+
+  /* ── Design Tokens ── */
   --background: var(--bg-primary);
   --foreground: var(--text-primary);
-  --card: var(--bg-primary);
+  --card: #faf8f5;
   --card-foreground: var(--text-primary);
-  --popover: var(--bg-primary);
+  --popover: #faf8f5;
   --popover-foreground: var(--text-primary);
   --primary: var(--accent-color);
   --primary-foreground: white;
@@ -49,11 +50,11 @@
   --ring: var(--accent-color);
   --chart-1: var(--accent-color);
   --chart-2: var(--success);
-  --chart-3: #f59e0b;
-  --chart-4: #8b5cf6;
-  --chart-5: #ec4899;
+  --chart-3: #d97706;
+  --chart-4: #7c3aed;
+  --chart-5: #db2777;
   --radius: 0.5rem;
-  --sidebar: var(--bg-primary);
+  --sidebar: #faf8f5;
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--accent-color);
   --sidebar-primary-foreground: white;
@@ -64,21 +65,30 @@
 }
 
 .dark {
-  --bg-primary: #2b2720;
-  --bg-secondary: #342f27;
-  --bg-tertiary: #433d33;
-  --text-primary: #f4e8df;
-  --text-secondary: #dec9bc;
-  --text-tertiary: #c8ad9b;
-  --border-light: rgba(242, 193, 165, 0.24);
-  --border-medium: rgba(242, 193, 165, 0.4);
-  --accent-color: #fa8b79;
-  --accent-light: #4d302a;
-  --accent-dark: #ffc1aa;
-  --success: #77c58f;
-  --error: #ff8e7d;
+  /* ── Dark: Deep Espresso & Ember ── */
+  /* Same warm brown DNA pushed much darker — like the inside of a dim café */
+  --bg-primary: #1a1610;        /* deep espresso, almost black with a warm undertone */
+  --bg-secondary: #242018;      /* lifted surface, still very dark */
+  --bg-tertiary: #302a20;       /* card/panel — toasted walnut */
+  --text-primary: #f2ebe0;      /* warm cream, not clinical white */
+  --text-secondary: #c9b99f;    /* aged parchment */
+  --text-tertiary: #8f7e6a;     /* muted caramel */
+  --border-light: rgba(242, 193, 165, 0.12);
+  --border-medium: rgba(242, 193, 165, 0.22);
 
-  /* Design Tokens */
+  /* Coral runs hotter in the dark — ember glow */
+  --accent-color: #ff6e54;
+  --accent-light: #3a1e18;      /* deep ember tint for hover backgrounds */
+  --accent-dark: #ffab94;       /* light coral for text-on-dark uses */
+  --success: #52a875;
+  --error: #f07060;
+
+  --mist: rgba(26, 22, 16, 0.72);
+  --mist-strong: rgba(36, 32, 24, 0.9);
+  --glass-edge: rgba(242, 193, 165, 0.16);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+
+  /* ── Design Tokens ── */
   --background: var(--bg-primary);
   --foreground: var(--text-primary);
   --card: var(--bg-secondary);
@@ -86,15 +96,15 @@
   --popover: var(--bg-secondary);
   --popover-foreground: var(--text-primary);
   --primary: var(--accent-color);
-  --primary-foreground: #2b2720;
+  --primary-foreground: #1a1610;
   --secondary: var(--bg-tertiary);
   --secondary-foreground: var(--text-primary);
   --muted: var(--bg-tertiary);
   --muted-foreground: var(--text-tertiary);
   --accent: var(--accent-color);
-  --accent-foreground: #2b2720;
+  --accent-foreground: #1a1610;
   --destructive: var(--error);
-  --destructive-foreground: #2b2720;
+  --destructive-foreground: #1a1610;
   --border: var(--border-light);
   --input: var(--bg-secondary);
   --ring: var(--accent-color);
@@ -106,7 +116,7 @@
   --sidebar: var(--bg-secondary);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--accent-color);
-  --sidebar-primary-foreground: #2b2720;
+  --sidebar-primary-foreground: #1a1610;
   --sidebar-accent: var(--bg-tertiary);
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-light);
@@ -177,12 +187,20 @@
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
   }
+  .dark .glass-panel {
+    background: linear-gradient(120deg, rgba(255, 180, 140, 0.06), var(--mist));
+  }
   .glass-panel-strong {
     background: linear-gradient(120deg, rgba(255, 255, 255, 0.58), var(--mist-strong));
     border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 20px 48px rgba(58, 54, 45, 0.18);
+    box-shadow: 0 20px 48px rgba(46, 42, 34, 0.18);
     backdrop-filter: blur(22px);
     -webkit-backdrop-filter: blur(22px);
+  }
+  .dark .glass-panel-strong {
+    background: linear-gradient(120deg, rgba(255, 180, 140, 0.1), var(--mist-strong));
+    border: 1px solid rgba(242, 193, 165, 0.2);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
   }
   .shadow-xs {
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);

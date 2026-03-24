@@ -18,9 +18,14 @@ export default function FeedPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <section className="glass-panel rounded-3xl p-5 md:p-7">
+      <section className="glass-panel relative overflow-hidden rounded-3xl border border-border/70 p-5 md:p-7">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-secondary/60 blur-2xl" />
+
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          
           <div>
+            
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Your social timeline</p>
             <h1 className="mt-2 text-3xl font-serif font-semibold text-foreground md:text-4xl">Moments</h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">

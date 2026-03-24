@@ -7,6 +7,7 @@ import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
+import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'framer-motion';
 const NAV_ITEMS: { href: string; icon: React.ElementType; label: string; id?: string }[] = [
   { href: '/feed',     icon: Heart,         label: 'Moments' },
@@ -24,10 +25,13 @@ function isPublicPath(pathname: string) {
 export function Navigation() {
   const pathname = usePathname();
   const { hasUnread } = useUnreadMessages();
+  const { theme, systemTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+  const currentTheme = theme === 'system' ? systemTheme : theme;
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isNavigating, setIsNavigating] = React.useState(false);
   const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
   React.useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!(
@@ -72,9 +76,12 @@ export function Navigation() {
       )}
 
       {/* Desktop Sidebar */}
-      <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col rounded-3xl p-4 md:flex">
+      <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col overflow-hidden rounded-3xl p-4 md:flex">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-primary/40 blur-2xl" />
+
         <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
-          <Image src="/logo.svg" alt="Logo" width={48} height={48} className="h-10 w-auto" priority />
+          <Image src={mounted && currentTheme === 'dark' ? '/logoDark.svg' : '/logo.svg'} alt="Logo" width={48} height={48} className="h-10 w-auto" priority />
         </Link>
 
         <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
@@ -107,7 +114,7 @@ export function Navigation() {
       {/* Mobile Top Header */}
       <header className="fixed inset-x-0 top-0 z-30 px-4 pt-4 md:hidden">
         <div className="glass-panel flex h-14 items-center justify-between rounded-2xl px-4 shadow-lg shadow-black/5">
-          <Image src="/logo.svg" alt="Nous logo" width={32} height={32} className="h-8 w-auto" priority />
+          <Image src={mounted && currentTheme === 'dark' ? '/logoDark.svg' : '/logo.svg'} alt="Nous logo" width={32} height={32} className="h-8 w-auto" priority />
           <Link href="/account" className="transition-transform active:scale-95">
             <CurrentUserAvatar size="md" />
           </Link>
