@@ -58,49 +58,44 @@ export function PhotoFeed({ refreshSignal = 0, currentUserId }: PhotoFeedProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSignal]);
 
-  const fetchPosts = async (force = false) => {
-    const now = Date.now();
+const fetchPosts = async (force = false) => {
+  const now = Date.now();
 
-    // Use module-level cache when fresh unless forced
-    if (!force && moduleCachedPosts !== null && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
-      setPosts(moduleCachedPosts);
-      setIsLoading(false);
-      return;
-    }
+  // 1. Module-level cache: fast path
+  if (!force && moduleCachedPosts !== null && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
+    setPosts(moduleCachedPosts);
+    setIsLoading(false);
+    return;
+  }
 
-    // Fallback to device cache (checking !== null to allow empty feeds to be cached)
+  // 2. Device cache: show immediately, then always continue to network
+  if (!force) {
     const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
-    if (!force && cachedPosts !== null) {
+    if (cachedPosts !== null) {
       setPosts(cachedPosts);
       moduleCachedPosts = cachedPosts;
       moduleCachedAt = now;
       setIsLoading(false);
-      // allow background refresh if TTL expired
-      if (now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) return;
+      // Don't return — fall through to network refresh in background
     }
+  }
 
-    try {
-      const response = await fetch('/api/posts');
-      if (response.ok) {
-        const data = await response.json();
-        const prevTopId = moduleCachedPosts?.[0]?.id;
-        const nextTopId = data?.[0]?.id;
-        
-        // Update if forced, or if the top post changed, or if our cache was completely empty
-        if (force || prevTopId !== nextTopId || !moduleCachedPosts) {
-          setPosts(data);
-          moduleCachedPosts = data;
-          moduleCachedAt = Date.now();
-          writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch posts:', error);
-    } finally {
-      setIsLoading(false);
+  try {
+    const response = await fetch('/api/posts');
+    if (response.ok) {
+      const data = await response.json();
+      // Always update state from network — removes the buggy top-ID guard
+      setPosts(data);
+      moduleCachedPosts = data;
+      moduleCachedAt = Date.now();
+      writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
     }
-  };
-
+  } catch (error) {
+    console.error('Failed to fetch posts:', error);
+  } finally {
+    setIsLoading(false);
+  }
+};
   const handlePostRemoved = (postId: string) => {
     setPosts((current) => current.filter((post) => post.id !== postId));
   };

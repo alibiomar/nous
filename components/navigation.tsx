@@ -4,104 +4,73 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
-
-const NAV_ITEMS = [
+import { AnimatePresence, motion } from 'framer-motion';
+const NAV_ITEMS: { href: string; icon: React.ElementType; label: string; id?: string }[] = [
   { href: '/feed',     icon: Heart,         label: 'Moments' },
   { href: '/messages', icon: MessageCircle, label: 'Messages', id: 'messages' },
   { href: '/music',    icon: Music,         label: 'Media' },
   { href: '/cinema',   icon: Clapperboard,  label: 'Cinema' },
 ];
 
+const PUBLIC_ROUTES = new Set(['/', '/login']);
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_ROUTES.has(pathname) || pathname.startsWith('/auth');
+}
+
 export function Navigation() {
   const pathname = usePathname();
   const { hasUnread } = useUnreadMessages();
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isNavigating, setIsNavigating] = React.useState(false);
-  const navTimerRef = React.useRef<number | null>(null);
+  const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     const handleFullscreenChange = () => {
-      const isFull = !!(
+      setIsFullscreen(!!(
         document.fullscreenElement ||
         (document as any).webkitFullscreenElement ||
         (document as any).mozFullScreenElement ||
         (document as any).msFullscreenElement
-      );
-      setIsFullscreen(isFull);
+      ));
     };
 
-    const events = [
-      'fullscreenchange',
-      'webkitfullscreenchange',
-      'mozfullscreenchange',
-      'MSFullscreenChange'
-    ];
-
-    events.forEach(event => document.addEventListener(event, handleFullscreenChange));
-
-    return () => {
-      events.forEach(event => document.removeEventListener(event, handleFullscreenChange));
-    };
+    const events = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
+    events.forEach(e => document.addEventListener(e, handleFullscreenChange));
+    return () => events.forEach(e => document.removeEventListener(e, handleFullscreenChange));
   }, []);
 
-  const isActive = React.useCallback((path: string) => {
-    return pathname === path || pathname.startsWith(`${path}/`);
-  }, [pathname]);
-
-  // Clear navigating state when pathname updates (navigation finished)
   React.useEffect(() => {
-    if (navTimerRef.current) {
-      window.clearTimeout(navTimerRef.current);
-      navTimerRef.current = null;
-    }
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
     setIsNavigating(false);
   }, [pathname]);
 
-  React.useEffect(() => {
-    return () => {
-      if (navTimerRef.current) {
-        window.clearTimeout(navTimerRef.current);
-        navTimerRef.current = null;
-      }
-    };
+  React.useEffect(() => () => {
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
   }, []);
 
   const handleNavigateStart = React.useCallback((href: string) => {
-    // don't show loader when clicking the already-active route
-    if (isActive(href)) return;
-
-    if (navTimerRef.current) {
-      window.clearTimeout(navTimerRef.current);
-      navTimerRef.current = null;
-    }
-
-    // debounce so fast navigations don't flash the loader
-    navTimerRef.current = window.setTimeout(() => {
+    if (pathname === href || pathname.startsWith(`${href}/`)) return;
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    navTimerRef.current = setTimeout(() => {
       setIsNavigating(true);
       navTimerRef.current = null;
     }, 120);
-  }, [isActive]);
+  }, [pathname]);
 
-  if (isFullscreen) return null;
-const isPublicRoute = pathname === '/login' || pathname === '/' || pathname.startsWith('/auth');
-  if (isPublicRoute) {
-    return null; // Hides the navigation completely
-  }
+  if (isFullscreen || isPublicPath(pathname)) return null;
+
   return (
     <>
-      {/* Navigation loading overlay */}
       {isNavigating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="flex flex-col items-center gap-4">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <div className="text-sm font-medium text-primary">Loading…</div>
-          </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <img src="/animated_heart_icon.svg" alt="Navigating" className="h-10 w-10" />
         </div>
       )}
+
       {/* Desktop Sidebar */}
       <aside className="glass-panel fixed left-4 top-4 z-30 hidden h-[calc(100vh-2rem)] w-64 flex-col rounded-3xl p-4 md:flex">
         <Link href="/feed" className="mb-8 px-2" aria-label="Go to feed">
@@ -111,11 +80,11 @@ const isPublicRoute = pathname === '/login' || pathname === '/' || pathname.star
         <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
           {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={`desktop-${href}`}
+              key={href}
               href={href}
               icon={icon}
               label={label}
-              active={isActive(href)}
+              active={pathname === href || pathname.startsWith(`${href}/`)}
               hasUnread={id === 'messages' ? hasUnread : false}
               variant="desktop"
               onNavigate={handleNavigateStart}
@@ -150,11 +119,11 @@ const isPublicRoute = pathname === '/login' || pathname === '/' || pathname.star
         <div className="glass-panel grid grid-cols-4 gap-1 rounded-3xl p-2 shadow-xl shadow-black/10">
           {NAV_ITEMS.map(({ href, icon, label, id }) => (
             <NavAnchor
-              key={`mobile-${href}`}
+              key={href}
               href={href}
               icon={icon}
               label={label}
-              active={isActive(href)}
+              active={pathname === href || pathname.startsWith(`${href}/`)}
               hasUnread={id === 'messages' ? hasUnread : false}
               variant="mobile"
               onNavigate={handleNavigateStart}
@@ -176,14 +145,15 @@ interface NavAnchorProps {
   onNavigate?: (href: string) => void;
 }
 
-const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, active, hasUnread, variant, onNavigate }: NavAnchorProps) {
+const NavAnchor = React.memo(function NavAnchor({
+  href, icon: Icon, label, active, hasUnread, variant, onNavigate,
+}: NavAnchorProps) {
   const isMobile = variant === 'mobile';
 
   return (
     <Link href={href} onClick={() => onNavigate?.(href)} className="group relative block outline-none">
-      <motion.div
-        whileTap={{ scale: 0.92 }}
-        className={`relative z-10 flex items-center justify-center gap-1 py-3 transition-colors duration-300 ${
+      <div
+        className={`relative z-10 flex items-center justify-center gap-1 py-3 transition-colors duration-200 active:scale-95 [transition-property:color,background-color,transform] ${
           isMobile ? 'min-h-14 flex-col rounded-2xl' : 'flex-row justify-start rounded-xl px-4'
         } ${
           active
@@ -192,7 +162,7 @@ const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, activ
         }`}
       >
         <div className="relative">
-          <Icon className={`${isMobile ? 'h-6 w-6' : 'h-5 w-5'} transition-transform group-hover:scale-110`} />
+          <Icon className={`${isMobile ? 'h-6 w-6' : 'h-5 w-5'} transition-transform duration-200 group-hover:scale-110`} />
           {hasUnread && (
             <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 ${
               active ? 'border-primary bg-white' : 'border-white bg-primary dark:border-zinc-900'
@@ -204,16 +174,19 @@ const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, activ
           {label}
         </span>
 
-        {/* Animated Background Pill */}
-        {active && (
-          <motion.div
-            layoutId={`activeNav-${variant}`} // Prevents the mobile/desktop layout calculation clash
-            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20"
-            style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
-            transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
-          />
-        )}
-      </motion.div>
+<AnimatePresence>
+  {active && (
+    <motion.span
+      layoutId={`activeNav-${variant}`}
+      className={`absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20 ${
+        isMobile ? 'rounded-2xl' : 'rounded-xl'
+      }`}
+      style={{ willChange: 'transform' }}
+      transition={{ type: 'tween', ease: 'easeInOut', duration: 0.18 }}
+    />
+  )}
+</AnimatePresence>
+      </div>
     </Link>
   );
 });
