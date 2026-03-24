@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 
+
 interface Post {
   id: string;
   user_id: string;
@@ -33,73 +34,64 @@ interface Post {
 
 interface PhotoFeedProps {
   refreshSignal?: number;
+  currentUserId: string;
 }
 
 const DEVICE_FEED_CACHE_KEY = 'nous:feed:posts';
 const DEVICE_FEED_CACHE_TTL_MS = 30_000;
 
-export function PhotoFeed({ refreshSignal = 0 }: PhotoFeedProps) {
+let moduleCachedPosts: Post[] | null = null;
+let moduleCachedAt = 0;
+
+export function PhotoFeed({ refreshSignal = 0, currentUserId }: PhotoFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const supabase = createClient();
 
-  useEffect(() => {
-    fetchCurrentUser();
-    fetchPosts();
+    useEffect(() => {
+      // when refreshSignal changes (e.g. after posting), force a network refresh
+      fetchPosts(true);
+    }, [refreshSignal]);
 
-    const channel = supabase
-      .channel('posts-feed')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts' },
-        () => {
-          fetchPosts();
-        }
-      )
-      .subscribe();
+    const fetchPosts = async (force = false) => {
+      const now = Date.now();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchPosts();
-  }, [refreshSignal]);
-
-  const fetchPosts = async () => {
-    const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
-    if (cachedPosts && cachedPosts.length > 0) {
-      setPosts(cachedPosts);
-      setIsLoading(false);
-    }
-
-    try {
-      const response = await fetch('/api/posts');
-      if (response.ok) {
-        const data = await response.json();
-        setPosts(data);
-        writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
+      // Use module-level cache when fresh unless forced
+      if (!force && moduleCachedPosts && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
+        setPosts(moduleCachedPosts);
+        setIsLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error('Failed to fetch posts:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const fetchCurrentUser = async () => {
-    try {
-      const response = await fetch('/api/auth/profile');
-      if (!response.ok) return;
+      // Fallback to device cache
+      const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
+      if (!force && cachedPosts && cachedPosts.length > 0) {
+        setPosts(cachedPosts);
+        moduleCachedPosts = cachedPosts;
+        moduleCachedAt = now;
+        setIsLoading(false);
+        // allow background refresh if TTL expired
+        if (now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) return;
+      }
 
-      const data = await response.json();
-      setCurrentUserId(data?.user?.id || null);
-    } catch (error) {
-      console.error('Failed to fetch current user:', error);
-    }
-  };
+      try {
+        const response = await fetch('/api/posts');
+        if (response.ok) {
+          const data = await response.json();
+          const prevTopId = moduleCachedPosts?.[0]?.id;
+          const nextTopId = data?.[0]?.id;
+          if (force || prevTopId !== nextTopId) {
+            setPosts(data);
+            moduleCachedPosts = data;
+            moduleCachedAt = Date.now();
+            writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch posts:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
   const handlePostRemoved = (postId: string) => {
     setPosts((current) => current.filter((post) => post.id !== postId));
@@ -239,6 +231,7 @@ function PostCard({
         setCommentCount(commentCount + 1);
         setNewComment('');
         removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+        moduleCachedPosts = null;
       }
     } catch (error) {
       console.error('Failed to post comment:', error);
@@ -271,6 +264,7 @@ function PostCard({
         setLikeCount(currentCount);
       } else {
         removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+        moduleCachedPosts = null;
       }
     } catch (error) {
       console.error('Like error:', error);
@@ -299,6 +293,7 @@ function PostCard({
       onPostUpdated(post.id, editedPostCaption);
       setEditingPost(false);
       removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+      moduleCachedPosts = null;
     } catch (error) {
       console.error('Failed to update post:', error);
     } finally {
@@ -320,6 +315,7 @@ function PostCard({
 
       onPostRemoved(post.id);
       removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+      moduleCachedPosts = null;
     } catch (error) {
       console.error('Failed to delete post:', error);
     }
@@ -346,6 +342,7 @@ function PostCard({
       setEditingCommentId(null);
       setEditedCommentContent('');
       removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+      moduleCachedPosts = null;
     } catch (error) {
       console.error('Failed to update comment:', error);
     }
@@ -366,6 +363,7 @@ function PostCard({
       setComments((current) => current.filter((comment) => comment.id !== commentId));
       setCommentCount((count) => Math.max(0, count - 1));
       removeDeviceCache(DEVICE_FEED_CACHE_KEY);
+      moduleCachedPosts = null;
     } catch (error) {
       console.error('Failed to delete comment:', error);
     }

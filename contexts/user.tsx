@@ -34,12 +34,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // If we already have a user, don't re-check on every navigation.
-    if (user) {
-      setIsLoading(false);
-      return;
-    }
-
     const checkAuth = async () => {
       try {
         const response = await fetch('/api/auth/session', { cache: 'no-store' });
@@ -57,8 +51,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    // Run only once on mount to avoid re-checking on every navigation.
     checkAuth();
-  }, [pathname, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = async () => {
     try {

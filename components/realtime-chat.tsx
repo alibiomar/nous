@@ -249,7 +249,7 @@ export const RealtimeChat = ({
     [broadcastTypingStatus, isConnected]
   )
 
-  const handleSendMessage = useCallback(
+const handleSendMessage = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
       if (!newMessage.trim() && !imagePreviewUrl) return
@@ -282,49 +282,62 @@ export const RealtimeChat = ({
           setIsUploadingImage(false)
         }
       } else if (imagePreviewUrl && !imagePreviewUrl.startsWith('blob:')) {
-        // Already uploaded URL
         uploadedImageUrl = imagePreviewUrl
       }
+
+      // 1. Generate a temporary ID for optimistic UI
+      const tempId = crypto.randomUUID()
+      const localTimestamp = new Date().toISOString() // Capture local time
 
       const messageData = {
         content: newMessage || null,
         imageUrl: uploadedImageUrl || null,
+        clientTimestamp: localTimestamp, // Send to backend to save local time
       }
 
-      // Send to backend for persistence
+      // 2. Optimistically update UI immediately (before fetch)
+      sendMessage({
+        id: tempId, // Pass tempId so the local state knows which message this is
+        content: newMessage || null,
+        imageUrl: uploadedImageUrl || null,
+        createdAt: localTimestamp,
+      })
+
+      // 3. Send to backend for persistence
       fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messageData),
       })
-        .then(async (res) => {
-          const data = await res.json()
-          if (!res.ok) {
-            console.error('❌ API rejected message:', res.status, data)
-          } else {
-            const recipientId = typeof data?.recipient_id === 'string' ? data.recipient_id : null
-            if (recipientId) {
-              await broadcastUnreadIncrement({ recipientId, delta: 1 })
-            }
-            window.dispatchEvent(new Event('messages:changed'))
+      .then(async (res) => {
+        const data = await res.json();
+        if (res.ok && data.id) {
+          // Swap the temp ID for the real DB ID so DELETE works without refresh
+          updateMessageLocally(tempId, { 
+            id: data.id, 
+            createdAt: data.created_at // sync exact database timestamp format if needed
+          }); 
+          
+          const recipientId = typeof data?.recipient_id === 'string' ? data.recipient_id : null;
+          if (recipientId) {
+            await broadcastUnreadIncrement({ recipientId, delta: 1 });
           }
-        })
-        .catch((err) => console.error('❌ Failed to persist message:', err))
-
-      // Broadcast to partner via realtime + update sender UI immediately
-      sendMessage({
-        content: newMessage || null,
-        imageUrl: uploadedImageUrl || null,
+          window.dispatchEvent(new Event('messages:changed'));
+        }
       })
+      .catch((err) => {
+        console.error('Failed to save message to DB:', err)
+        // Optional: deleteMessageLocally(tempId) if you want to remove it on failure
+      });
 
-      // Push notification to partner — now cleanly utilizing the generic hook!
+      // Push notification to partner
       void sendPushNotification(
         newMessage.trim()
           ? `${username}: ${newMessage.trim().slice(0, 100)}`
           : `${username} sent an image`,
         {
           url: '/messages',
-          senderId: currentUserId, // prevents pushing to your own devices
+          senderId: currentUserId,
         }
       )
 
@@ -353,10 +366,10 @@ export const RealtimeChat = ({
       broadcastUnreadIncrement, 
       username, 
       currentUserId, 
-      sendPushNotification
+      sendPushNotification,
+      updateMessageLocally // Added to dependency array
     ]
   )
-
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
       try {

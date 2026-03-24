@@ -43,6 +43,8 @@ interface BroadcastPayload<T> {
 interface SendMessagePayload {
   content: string | null
   imageUrl?: string | null
+  id?: string         // <-- Add this
+  createdAt?: string  // <-- Add this
 }
 
 interface PeerPresencePayload {
@@ -220,34 +222,36 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
   }, [roomName, username, supabase])
 
   const sendMessage = useCallback(
-    async ({ content, imageUrl }: SendMessagePayload) => {
-      if (!content && !imageUrl) return
+    async ({ content, imageUrl, id, createdAt }: SendMessagePayload) => {
+      if (!channel || !isConnected) return
+
+      // Use the provided ID/timestamp from the UI, or generate new ones
+      const messageId = id || crypto.randomUUID()
+      const timestamp = createdAt || new Date().toISOString()
 
       const message: ChatMessage = {
-        id: crypto.randomUUID(),
-        sender_id: currentUserId,
+        id: messageId,
         content,
-        image_url: imageUrl ?? null,
+        image_url: imageUrl,
         user: {
           id: currentUserId,
           name: username,
           avatar_url: userAvatarUrl,
         },
-        createdAt: new Date().toISOString(),
+        createdAt: timestamp,
       }
 
-      // Update local state immediately for the sender
+      // Optimistically add to local state
       setMessages((current) => [...current, message])
 
-      if (!channel || !isConnected) return
-
+      // Broadcast to other peers
       await channel.send({
         type: 'broadcast',
         event: EVENT_MESSAGE_TYPE,
         payload: message,
       })
     },
-    [channel, isConnected, username, currentUserId, userAvatarUrl]
+    [channel, isConnected, currentUserId, username, userAvatarUrl]
   )
 
   const broadcastEditMessage = useCallback(

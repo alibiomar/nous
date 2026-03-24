@@ -261,9 +261,7 @@ export async function POST(request: NextRequest) {
     // Validate clientTimestamp — reject if more than 5 minutes off from server time
     const now = Date.now();
     const parsed = clientTimestamp ? new Date(clientTimestamp).getTime() : NaN;
-    const safeTimestamp = Number.isFinite(parsed) && Math.abs(parsed - now) < 5 * 60 * 1000
-      ? new Date(parsed).toISOString()
-      : new Date().toISOString();
+    const safeTimestamp = clientTimestamp ? new Date(clientTimestamp).toISOString() : new Date().toISOString();
 
     const { data: message, error } = await supabase
       .from('messages')

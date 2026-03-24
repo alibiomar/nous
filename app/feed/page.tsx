@@ -65,7 +65,9 @@ export default function FeedPage() {
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="glass-panel rounded-3xl p-4 md:p-5">
-          <PhotoFeed refreshSignal={refreshSignal} />
+          <PhotoFeed refreshSignal={refreshSignal} 
+                    currentUserId={user?.id ?? ''}
+/>
         </div>
 
         <aside className="glass-panel hidden rounded-3xl p-5 lg:block">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState,useEffect } from 'react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/hooks/use-realtime-chat'
@@ -31,10 +31,29 @@ export const ChatMessageItem = ({
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(message.content || '')
   const [isLoading, setIsLoading] = useState(false)
-  const formattedTime = new Date(message.createdAt).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  // 1. Start with an empty string so the server and client match initially
+  const [formattedTime, setFormattedTime] = useState('')
+
+  // 2. Calculate the local time only after it reaches the user's browser
+  useEffect(() => {
+    if (!message.createdAt) return;
+
+    let dateString = message.createdAt;
+
+    // Failsafe: ensure the string is treated as UTC even if formatting varies
+    if (dateString.includes(' ') && !dateString.includes('+')) {
+      dateString = dateString.replace(' ', 'T') + 'Z';
+    } else if (!dateString.endsWith('Z') && !dateString.includes('+')) {
+      dateString += 'Z';
+    }
+
+    const time = new Date(dateString).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    setFormattedTime(time);
+  }, [message.createdAt]);
 
   const initials = message.user.name
     ?.split(' ')
@@ -176,7 +195,7 @@ export const ChatMessageItem = ({
                   </div>
                   <div className="mt-1 flex items-center justify-end gap-2 text-[10px] opacity-70">
                     {message.is_edited && <span>(edited)</span>}
-                    <span>{formattedTime}</span>
+                    <span>{formattedTime || '\u00A0'}</span>
                   </div>
                 </div>
               )}
