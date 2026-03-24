@@ -46,52 +46,60 @@ let moduleCachedAt = 0;
 export function PhotoFeed({ refreshSignal = 0, currentUserId }: PhotoFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const isInitialMount = useRef(true);
 
-    useEffect(() => {
-      // when refreshSignal changes (e.g. after posting), force a network refresh
-      fetchPosts(true);
-    }, [refreshSignal]);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      fetchPosts(false); // Don't force on initial mount; use cache if available
+    } else {
+      fetchPosts(true); // Force network refresh only when refreshSignal actually changes
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
-    const fetchPosts = async (force = false) => {
-      const now = Date.now();
+  const fetchPosts = async (force = false) => {
+    const now = Date.now();
 
-      // Use module-level cache when fresh unless forced
-      if (!force && moduleCachedPosts && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
-        setPosts(moduleCachedPosts);
-        setIsLoading(false);
-        return;
-      }
+    // Use module-level cache when fresh unless forced
+    if (!force && moduleCachedPosts !== null && now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) {
+      setPosts(moduleCachedPosts);
+      setIsLoading(false);
+      return;
+    }
 
-      // Fallback to device cache
-      const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
-      if (!force && cachedPosts && cachedPosts.length > 0) {
-        setPosts(cachedPosts);
-        moduleCachedPosts = cachedPosts;
-        moduleCachedAt = now;
-        setIsLoading(false);
-        // allow background refresh if TTL expired
-        if (now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) return;
-      }
+    // Fallback to device cache (checking !== null to allow empty feeds to be cached)
+    const cachedPosts = readDeviceCache<Post[]>(DEVICE_FEED_CACHE_KEY);
+    if (!force && cachedPosts !== null) {
+      setPosts(cachedPosts);
+      moduleCachedPosts = cachedPosts;
+      moduleCachedAt = now;
+      setIsLoading(false);
+      // allow background refresh if TTL expired
+      if (now - moduleCachedAt < DEVICE_FEED_CACHE_TTL_MS) return;
+    }
 
-      try {
-        const response = await fetch('/api/posts');
-        if (response.ok) {
-          const data = await response.json();
-          const prevTopId = moduleCachedPosts?.[0]?.id;
-          const nextTopId = data?.[0]?.id;
-          if (force || prevTopId !== nextTopId) {
-            setPosts(data);
-            moduleCachedPosts = data;
-            moduleCachedAt = Date.now();
-            writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
-          }
+    try {
+      const response = await fetch('/api/posts');
+      if (response.ok) {
+        const data = await response.json();
+        const prevTopId = moduleCachedPosts?.[0]?.id;
+        const nextTopId = data?.[0]?.id;
+        
+        // Update if forced, or if the top post changed, or if our cache was completely empty
+        if (force || prevTopId !== nextTopId || !moduleCachedPosts) {
+          setPosts(data);
+          moduleCachedPosts = data;
+          moduleCachedAt = Date.now();
+          writeDeviceCache(DEVICE_FEED_CACHE_KEY, data, DEVICE_FEED_CACHE_TTL_MS);
         }
-      } catch (error) {
-        console.error('Failed to fetch posts:', error);
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Failed to fetch posts:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handlePostRemoved = (postId: string) => {
     setPosts((current) => current.filter((post) => post.id !== postId));

@@ -7,7 +7,6 @@ import { useCurrentUserImage } from '@/hooks/use-current-user-image';
 import type { ChatMessage } from '@/hooks/use-realtime-chat';
 import { createClient } from '@/lib/client';
 import { readDeviceCache, writeDeviceCache } from '@/lib/device-cache';
-import { getPreloadedMessages, clearPreloadedMessages } from '@/lib/message-prefetch-cache';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/contexts/call';
 
@@ -53,40 +52,54 @@ export function RealtimeChatWrapper({
 }: RealtimeChatWrapperProps) {
   const { inviteAndStartCall } = useCall();
   const supabase = createClient();
-  // Read from module-level prefetch cache populated by Splash — synchronous, no flash
+  
+  // Initialize from device cache to prevent loading flashes
   const [initialMessages, setInitialMessages] = useState<ChatMessage[]>(() => {
-    const preloaded = getPreloadedMessages();
-    if (preloaded && preloaded.length > 0) return preloaded;
     const cached = readDeviceCache<ChatMessage[]>(`nous:messages:${currentUserId}`);
     return cached ?? [];
   });
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
-  // Start as false if we already have messages from the prefetch cache
+  
+  // Only show loading if we have absolutely no cached messages
   const [isLoading, setIsLoading] = useState<boolean>(() => {
-    const preloaded = getPreloadedMessages();
-    if (preloaded && preloaded.length > 0) return false;
     const cached = readDeviceCache<ChatMessage[]>(`nous:messages:${currentUserId}`);
     return !cached || cached.length === 0;
   });
+  
   const [hasOtherPeerOnline, setHasOtherPeerOnline] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
   const currentUserAvatarUrl = useCurrentUserImage();
 
-  // Fetch/refresh message history — Splash already prefetched so this is a background refresh
+  // Fetch/refresh message history on mount
   useEffect(() => {
     const loadMessages = async () => {
       const deviceCacheKey = `nous:messages:${currentUserId}`;
 
-      // If Splash already loaded messages, use them and clear the prefetch cache
-      const preloaded = getPreloadedMessages();
-      if (preloaded && preloaded.length > 0) {
-        setInitialMessages(preloaded);
-        setIsLoading(false);
-        clearPreloadedMessages();
-        writeDeviceCache(deviceCacheKey, preloaded, DEVICE_MESSAGES_CACHE_TTL_MS);
-        return; // Splash already did the fetch — skip the duplicate request
-      }
+      try {
+        const res = await fetch('/api/messages?limit=200', { cache: 'no-store' });
+        if (!res.ok) return;
+        
+        const raw = await res.json();
+        const formattedMessages = (Array.isArray(raw) ? raw : []).map((msg: any): ChatMessage => ({
+          id: msg.id,
+          sender_id: msg.sender_id,
+          content: msg.content,
+          image_url: msg.image_url || null,
+          user: {
+            id: msg.sender?.id,
+            name: msg.sender?.name || 'Unknown',
+            avatar_url: msg.sender?.avatar_url || null,
+          },
+          createdAt: msg.created_at,
+        }));
 
+        setInitialMessages(formattedMessages);
+        writeDeviceCache(deviceCacheKey, formattedMessages, DEVICE_MESSAGES_CACHE_TTL_MS);
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     loadMessages();
@@ -191,6 +204,17 @@ export function RealtimeChatWrapper({
     }
   };
  
+  if (isLoading) {
+    return (
+      <div className="mx-3 mt-1 flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
+          <span>Loading messages...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full min-h-0 w-full overflow-hidden bg-background">
       <div className="grid h-full gap-4 px-3 pb-3 md:gap-5 md:px-6 md:py-4">

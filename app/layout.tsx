@@ -6,7 +6,6 @@ import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
 import { GlobalCursors } from '@/components/global-cursors'
 import { GlobalMediaPlayer } from '@/components/global-media-player'
-import Splash from '@/components/splash'
 import './globals.css'
 
 const cormorant = Cormorant_Garamond({ 
@@ -59,9 +58,7 @@ export default function RootLayout({
             <CallProvider>
               <Navigation />
               <GlobalCursors />
-              <Splash>
                 {children}
-              </Splash>
               <GlobalMediaPlayer />
             </CallProvider>
           </UnreadMessagesProvider>

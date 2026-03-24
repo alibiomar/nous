@@ -40,6 +40,39 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
+
+          // --- WARMUP LOGIC ---
+          const promises: Promise<unknown>[] = [];
+          
+          // Pre-fetch stories
+          promises.push(fetch('/api/stories', { cache: 'no-store' }).catch(() => null));
+          
+          if (data.user) {
+            // Pre-fetch unread count
+            promises.push(fetch('/api/messages/unread-count', { cache: 'no-store' }).catch(() => null));
+          }
+          
+          // Safely execute DOM-dependent preloading
+          if (typeof window !== 'undefined') {
+            // Preload core image assets
+            for (const src of ['/logo.svg', '/animated_heart_icon.svg']) {
+              const img = new Image();
+              img.src = src;
+            }
+            
+            // Warm up YouTube API script
+            if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+              const s = document.createElement('script');
+              s.src = 'https://www.youtube.com/iframe_api';
+              s.async = true;
+              document.head.appendChild(s);
+            }
+          }
+
+          // Execute background fetches without blocking the UI
+          Promise.allSettled(promises);
+          // --------------------
+
           return;
         }
 

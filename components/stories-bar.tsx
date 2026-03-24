@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { StoryViewer } from './story-viewer';
 
@@ -34,8 +34,16 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   const [stories, setStories] = useState<Story[]>([]);
   const [viewerAuthorId, setViewerAuthorId] = useState<string | null>(null);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+  const isInitialMount = useRef(true);
 
-  const fetchStories = async () => {
+  const fetchStories = async (force = false) => {
+    // Use cached stories if available and this isn't a forced refresh.
+    // Checking !== null allows empty arrays [] to correctly act as a cached state.
+    if (!force && cachedStories !== null) {
+      setStories(cachedStories);
+      return;
+    }
+
     try {
       const res = await fetch('/api/stories');
       if (!res.ok) return;
@@ -46,13 +54,13 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   };
 
   useEffect(() => {
-    // Use cached stories if available and this isn't a forced refresh.
-    if (refreshSignal === undefined && cachedStories && cachedStories.length > 0) {
-      setStories(cachedStories);
-      return;
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      fetchStories(false); // Don't force on initial mount; use cache if available
+    } else {
+      fetchStories(true); // Force network refresh only when refreshSignal actually changes
     }
-
-    void fetchStories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSignal]);
 
   // Clear cache when the current user changes (e.g., logout/login)
@@ -95,7 +103,7 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   useEffect(() => {
     const onUpdated = () => {
       cachedStories = null;
-      void fetchStories();
+      void fetchStories(true);
     };
     window.addEventListener('nous:stories:updated', onUpdated);
     return () => window.removeEventListener('nous:stories:updated', onUpdated);
