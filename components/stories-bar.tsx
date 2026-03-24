@@ -27,6 +27,9 @@ interface StoriesBarProps {
   refreshSignal?: number;
 }
 
+// Simple in-memory cache to avoid refetching stories on component remounts
+let cachedStories: Story[] | null = null;
+
 export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: StoriesBarProps) {
   const [stories, setStories] = useState<Story[]>([]);
   const [viewerAuthorId, setViewerAuthorId] = useState<string | null>(null);
@@ -38,10 +41,24 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
       if (!res.ok) return;
       const data = await res.json() as Story[];
       setStories(data);
+      cachedStories = data;
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { void fetchStories(); }, [refreshSignal]);
+  useEffect(() => {
+    // Use cached stories if available and this isn't a forced refresh.
+    if (refreshSignal === undefined && cachedStories && cachedStories.length > 0) {
+      setStories(cachedStories);
+      return;
+    }
+
+    void fetchStories();
+  }, [refreshSignal]);
+
+  // Clear cache when the current user changes (e.g., logout/login)
+  useEffect(() => {
+    cachedStories = null;
+  }, [currentUserId]);
 
   // Group by author — show one circle per person, with their latest story
   const grouped = stories.reduce<Record<string, Story[]>>((acc, story) => {
@@ -64,8 +81,25 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
   };
 
   const handleDelete = (storyId: string) => {
-    setStories((prev) => prev.filter((s) => s.id !== storyId));
+    setStories((prev) => {
+      const next = prev.filter((s) => s.id !== storyId);
+      // Keep module cache in sync
+      if (cachedStories) {
+        cachedStories = cachedStories.filter((s) => s.id !== storyId);
+      }
+      return next;
+    });
   };
+
+  // Listen for global invalidation events (e.g., when a story is created elsewhere)
+  useEffect(() => {
+    const onUpdated = () => {
+      cachedStories = null;
+      void fetchStories();
+    };
+    window.addEventListener('nous:stories:updated', onUpdated);
+    return () => window.removeEventListener('nous:stories:updated', onUpdated);
+  }, []);
 
   if (stories.length === 0 && authorIds.length === 0) {
     return (

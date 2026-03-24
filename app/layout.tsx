@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Cormorant_Garamond, DM_Sans } from 'next/font/google'
 import { UserProvider } from '@/contexts/user'
+import { Navigation } from '@/components/navigation'
 import { UnreadMessagesProvider } from '@/contexts/unread-messages'
 import { CallProvider } from '@/contexts/call'
 import { GlobalCursors } from '@/components/global-cursors'
@@ -56,6 +57,7 @@ export default function RootLayout({
         <UserProvider>
           <UnreadMessagesProvider>
             <CallProvider>
+              <Navigation />
               <GlobalCursors />
               <Splash>
                 {children}

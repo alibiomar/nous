@@ -154,6 +154,9 @@ export function StoryViewer({ stories, initialIndex, currentUserId, onClose, onD
       const res = await fetch(`/api/stories?id=${story.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       onDelete?.(story.id);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nous:stories:updated'));
+      }
       // Move to next story or close
       if (stories.length <= 1) {
         onClose();

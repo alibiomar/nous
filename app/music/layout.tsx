@@ -1,4 +1,3 @@
-import { Navigation } from '@/components/navigation';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -13,7 +12,7 @@ export default function MediaLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
+      
       <main className="md:ml-72">
         {children}
       </main>

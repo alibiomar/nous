@@ -977,6 +977,9 @@ const { sendPushNotification } = usePushNotifications();
         }
       );
       reset(); onPosted?.(); onClose();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nous:stories:updated'));
+      }
     } catch { setPostError('Something went wrong.'); }
     finally { setIsPosting(false); setUploadStep(''); }
   };

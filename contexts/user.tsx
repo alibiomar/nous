@@ -28,7 +28,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const isPublicAuthRoute = pathname === '/login' || pathname.startsWith('/auth');
 
+    // If we're on a public route, no need to fetch session.
     if (isPublicAuthRoute) {
+      setIsLoading(false);
+      return;
+    }
+
+    // If we already have a user, don't re-check on every navigation.
+    if (user) {
       setIsLoading(false);
       return;
     }
@@ -51,7 +58,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, [pathname]);
+  }, [pathname, user]);
 
   const logout = async () => {
     try {
