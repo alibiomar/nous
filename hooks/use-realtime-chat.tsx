@@ -82,15 +82,14 @@ export function useRealtimeChat({ roomName, username, currentUserId, userAvatarU
   const [peerDirectory, setPeerDirectory] = useState<Record<string, string>>({})
   const [incomingCallInvite, setIncomingCallInvite] = useState<IncomingCallInvite | null>(null)
 
-  // Update messages when initialMessages change
-  useEffect(() => {
-    setMessages((current) => {
-      // Merge initial messages with any new ones received via realtime
-      const realTimeIds = new Set(current.map(m => m.id))
-      const newInitial = initialMessages.filter(m => !realTimeIds.has(m.id))
-      return [...initialMessages, ...current.filter(m => !initialMessages.some(im => im.id === m.id))]
-    })
-  }, [initialMessages.length]) // Only when initial messages change
+useEffect(() => {
+  setMessages((current) => {
+    const currentIds = new Set(current.map((m) => m.id))
+    const toAdd = initialMessages.filter((m) => !currentIds.has(m.id))
+    if (toAdd.length === 0) return current
+    return [...toAdd, ...current]
+  })
+}, [initialMessages.length])
 
   useEffect(() => {
     const handleAddMessageEvent = (e: Event) => {

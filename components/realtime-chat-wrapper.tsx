@@ -246,7 +246,7 @@ export function RealtimeChatWrapper({
               username={currentUserName}
               currentUserId={currentUserId}
               userAvatarUrl={currentUserAvatarUrl}
-              messages={initialMessages}
+              messages={messagePool}
               onMessage={setLiveMessages}
             />
           </div>
