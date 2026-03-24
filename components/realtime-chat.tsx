@@ -83,16 +83,22 @@ export const RealtimeChat = ({
   }, [])
 
   // Merge realtime messages with initial messages
-  const allMessages = useMemo(() => {
-    // realtimeMessages already includes initialMessages + realtime updates
-    const normalizedMessages = realtimeMessages.map((message) => ({
-      ...message,
-      user: {
-        id: message.user?.id ?? message.sender_id,
-        name: message.user?.name?.trim() || 'Unknown user',
-        avatar_url: message.user?.avatar_url ?? null,
-      },
-    }))
+const allMessages = useMemo(() => {
+    const normalizedMessages = realtimeMessages.map((message) => {
+      // Safely resolve the user ID regardless of how the payload came in
+      const resolvedUserId = message.user?.id ?? message.sender_id;
+      
+      return {
+        ...message,
+        sender_id: resolvedUserId, // Guarantee sender_id is populated for the UI check
+        user: {
+          id: resolvedUserId,
+          name: message.user?.name?.trim() || 'Unknown user',
+          // Handle both snake_case and camelCase data payloads
+          avatar_url: message.user?.avatar_url ?? (message.user as any)?.avatarUrl ?? null,
+        },
+      };
+    })
 
     const sortedMessages = [...normalizedMessages].sort((a, b) => {
       return getMessageTimestamp(a) - getMessageTimestamp(b)
@@ -414,10 +420,8 @@ const handleSendMessage = useCallback(
               >
                 <ChatMessageItem
                   message={message}
-                  isOwnMessage={
-                    (message.sender_id ? message.sender_id === currentUserId : false) ||
-                    (message.user.id ? message.user.id === currentUserId : false)
-                  }
+                  // Cleaned up: Since we guaranteed sender_id above, this check is now safe
+                  isOwnMessage={message.sender_id === currentUserId}
                   showHeader={showHeader}
                   onEdit={handleEditMessage}
                   onDelete={handleDeleteMessage}

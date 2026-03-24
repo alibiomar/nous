@@ -9,7 +9,6 @@ import { createClient } from '@/lib/client';
 import { readDeviceCache, writeDeviceCache } from '@/lib/device-cache';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/contexts/call';
-import { useUser } from '@/contexts/user';
 
 interface RealtimeChatWrapperProps {
   currentUserId: string;
@@ -23,16 +22,11 @@ function hasOtherPeerInPresence(
   currentUserId: string
 ) {
   for (const [presenceKey, presences] of Object.entries(state)) {
-    if (presenceKey === currentUserId) {
-      continue;
-    }
+    if (presenceKey === currentUserId) continue;
 
     if (Array.isArray(presences) && presences.length > 0) {
       const hasNonSelfMeta = presences.some((presence) => {
-        if (!presence || typeof presence !== 'object') {
-          return false;
-        }
-
+        if (!presence || typeof presence !== 'object') return false;
         const meta = presence as { userId?: string };
         return Boolean(meta.userId && meta.userId !== currentUserId);
       });
@@ -42,7 +36,6 @@ function hasOtherPeerInPresence(
       }
     }
   }
-
   return false;
 }
 
@@ -51,39 +44,33 @@ export function RealtimeChatWrapper({
   currentUserName,
 }: RealtimeChatWrapperProps) {
   const { inviteAndStartCall } = useCall();
-  const { user } = useUser();
   const supabase = createClient();
-
-  // Use context user id as source of truth, fall back to prop
-  const cacheUserId = user?.id ?? currentUserId;
-
-  // Initialize from device cache using the resolved user id
+  
+  const roomName = 'default-chat-room';
+  const deviceCacheKey = `nous:messages:${currentUserId}`;
+  
   const [initialMessages, setInitialMessages] = useState<ChatMessage[]>(() => {
-    if (!cacheUserId) return [];
-    return readDeviceCache<ChatMessage[]>(`nous:messages:${cacheUserId}`) ?? [];
+    const cached = readDeviceCache<ChatMessage[]>(deviceCacheKey);
+    return cached ?? [];
   });
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
-
-  // Only show loading if we have absolutely no cached messages
+  
   const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (!cacheUserId) return true;
-    const cached = readDeviceCache<ChatMessage[]>(`nous:messages:${cacheUserId}`);
+    const cached = readDeviceCache<ChatMessage[]>(deviceCacheKey);
     return !cached || cached.length === 0;
   });
-
+  
   const [hasOtherPeerOnline, setHasOtherPeerOnline] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
   const currentUserAvatarUrl = useCurrentUserImage();
 
-  // Fetch/refresh message history on mount
+  // Load messages
   useEffect(() => {
     const loadMessages = async () => {
-      const deviceCacheKey = `nous:messages:${cacheUserId}`;
-
       try {
-        const res = await fetch('/api/messages?limit=200', { cache: 'no-store' });
+        const res = await fetch(`/api/messages`, { cache: 'no-store' });
         if (!res.ok) return;
-
+        
         const raw = await res.json();
         const formattedMessages = (Array.isArray(raw) ? raw : []).map((msg: any): ChatMessage => ({
           id: msg.id,
@@ -108,15 +95,12 @@ export function RealtimeChatWrapper({
     };
 
     loadMessages();
-  }, [cacheUserId]);
+  }, [deviceCacheKey]);
 
+  // Presence channel
   useEffect(() => {
-    const presenceChannel = supabase.channel('presence:default-chat-room', {
-      config: {
-        presence: {
-          key: currentUserId,
-        },
-      },
+    const presenceChannel = supabase.channel(`presence:${roomName}`, {
+      config: { presence: { key: currentUserId } },
     });
 
     presenceChannel
@@ -146,63 +130,48 @@ export function RealtimeChatWrapper({
     return () => {
       supabase.removeChannel(presenceChannel);
     };
-  }, [currentUserId, supabase]);
+  }, [currentUserId, roomName, supabase]);
 
   const messagePool = liveMessages.length > 0 ? liveMessages : initialMessages;
 
-  // Write to cache whenever messages change, using the resolved user id
+  // Cache updater
   useEffect(() => {
-    if (!cacheUserId) return;
-    const deviceCacheKey = `nous:messages:${cacheUserId}`;
     const latestMessages = liveMessages.length > 0 ? liveMessages : initialMessages;
-
     if (latestMessages.length > 0) {
       writeDeviceCache(deviceCacheKey, latestMessages, DEVICE_MESSAGES_CACHE_TTL_MS);
     }
-  }, [cacheUserId, initialMessages, liveMessages]);
+  }, [deviceCacheKey, initialMessages, liveMessages]);
 
+  // RESTORED: Deriving the peer from the message pool
   const peer = useMemo(() => {
     const newestPeerMessage = [...messagePool]
       .reverse()
       .find((message) => {
         const peerId = message.sender_id ?? message.user?.id;
-        return Boolean(peerId && peerId !== cacheUserId);
+        return Boolean(peerId && peerId !== currentUserId);
       });
 
-    if (!newestPeerMessage) {
-      return null;
-    }
+    if (!newestPeerMessage) return null;
 
-    const peerId = newestPeerMessage.sender_id ?? newestPeerMessage.user?.id;
-    if (!peerId) {
-      return null;
-    }
+    const resolvedId = newestPeerMessage.sender_id ?? newestPeerMessage.user?.id;
 
     return {
-      id: peerId,
-      name: newestPeerMessage.user?.name?.trim() || 'Unknown user',
+      id: resolvedId as string,
+      name: newestPeerMessage.user?.name || 'Unknown',
     };
-  }, [cacheUserId, messagePool]);
+  }, [messagePool, currentUserId]);
 
-  const peerStatusLabel = peer
-    ? hasOtherPeerOnline
-      ? 'Online'
-      : 'Offline'
-    : hasOtherPeerOnline
-      ? 'Online'
-      : 'Waiting for peer';
+  const peerStatusLabel = hasOtherPeerOnline ? 'Online' : 'Offline';
 
   const handleStartCall = async () => {
-    if (!peer || isStartingCall) {
-      return;
-    }
+    if (isStartingCall || !peer) return;
 
     setIsStartingCall(true);
     try {
       await inviteAndStartCall({
         partnerUserId: peer.id,
         partnerName: peer.name,
-        baseRoomName: 'default-chat-room',
+        baseRoomName: roomName,
       });
     } catch (error) {
       console.error('Failed to start call from header:', error);
@@ -210,7 +179,7 @@ export function RealtimeChatWrapper({
       setIsStartingCall(false);
     }
   };
-
+ 
   if (isLoading) {
     return (
       <div className="mx-3 mt-1 flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
@@ -229,15 +198,14 @@ export function RealtimeChatWrapper({
           <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-primary/60 blur-2xl" />
 
+          {/* RESTORED OLD HEADER BLOCK */}
           <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-lg font-semibold text-foreground md:text-xl">
                   {peer ? peer.name : 'No peer yet'}
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground md:text-sm">
-                  {isStartingCall ? 'Preparing call...' : peerStatusLabel}
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground md:text-sm">{isStartingCall ? 'Preparing call...' : peerStatusLabel}</p>
               </div>
               <Button
                 type="button"
@@ -247,20 +215,16 @@ export function RealtimeChatWrapper({
                 disabled={!peer || isStartingCall}
                 title="Open voice call page"
               >
-                {isStartingCall ? (
-                  <img src="/animated_heart_icon.svg" alt="Loading" className="size-4" />
-                ) : (
-                  <Phone className="size-4" />
-                )}
+                {isStartingCall ? <img src="/animated_heart_icon.svg" alt="Loading" className="size-4" /> : <Phone className="size-4" />}
               </Button>
             </div>
           </div>
 
           <div className="mt-3 min-h-0 rounded-2xl flex-1 overflow-hidden">
             <RealtimeChat
-              roomName="default-chat-room"
+              roomName={roomName}
               username={currentUserName}
-              currentUserId={cacheUserId}
+              currentUserId={currentUserId}
               userAvatarUrl={currentUserAvatarUrl}
               messages={messagePool}
               onMessage={setLiveMessages}

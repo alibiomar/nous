@@ -38,26 +38,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+// user.tsx (Inside checkAuth)
 const checkAuth = async () => {
   try {
+    // This calls your GET /api/auth/session
     const response = await fetch('/api/auth/session');
     
     if (response.ok) {
-      // Safely handle empty bodies to prevent JSON.parse errors
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : null;
-      setUserState(data?.user || null);
+      const data = await response.json();
+      setUserState(data?.user || null); // data.user mapped in route.ts
     } else {
       setUserState(null);
     }
   } catch (err) {
-    console.error('Failed to fetch session:', err);
-    setUserState(null); // Ensure state resolves safely on failure
+    setUserState(null);
   } finally {
     setIsLoading(false);
   }
 };
-
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

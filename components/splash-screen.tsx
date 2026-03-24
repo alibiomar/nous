@@ -28,14 +28,6 @@ async function runWarmup(userId?: string): Promise<void> {
     { url: '/api/stories', cacheKey: 'nous:stories', ttl: 30_000 },
   ];
 
-  // 3. Conditionally add user-specific preloads if we have the ID
-  if (userId) {
-    preloads.push({ 
-      url: '/api/messages', 
-cacheKey: `nous:messages:${userId}`,      ttl: 30_000 
-    });
-  }
-
   // 4. Run the fetches and save to device cache
   await Promise.allSettled(
     preloads.map(async ({ url, cacheKey, ttl }) => {
