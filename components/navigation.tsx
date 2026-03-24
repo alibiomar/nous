@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, MessageCircle, Music, Clapperboard } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { useUnreadMessages } from '@/hooks/use-unread-messages';
 import Image from 'next/image';
@@ -176,18 +177,19 @@ const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, activ
   const isMobile = variant === 'mobile';
 
   return (
-    <Link href={href} onClick={() => onNavigate?.(href)} className="group block outline-none">
-      <div
-        className={`flex items-center justify-center gap-1 py-3 transition-all duration-200 ease-in-out active:scale-95 ${
+    <Link href={href} onClick={() => onNavigate?.(href)} className="group relative block outline-none">
+      <motion.div
+        whileTap={{ scale: 0.92 }}
+        className={`relative z-10 flex items-center justify-center gap-1 py-3 transition-colors duration-300 ${
           isMobile ? 'min-h-14 flex-col rounded-2xl' : 'flex-row justify-start rounded-xl px-4'
         } ${
           active
-            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
+            ? 'text-primary-foreground'
             : 'text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5'
         }`}
       >
         <div className="relative">
-          <Icon className={`${isMobile ? 'h-6 w-6' : 'h-5 w-5'}`} />
+          <Icon className={`${isMobile ? 'h-6 w-6' : 'h-5 w-5'} transition-transform group-hover:scale-110`} />
           {hasUnread && (
             <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 ${
               active ? 'border-primary bg-white' : 'border-white bg-primary dark:border-zinc-900'
@@ -198,7 +200,17 @@ const NavAnchor = React.memo(function NavAnchor({ href, icon: Icon, label, activ
         <span className={isMobile ? 'text-[10px] font-bold uppercase tracking-wider' : 'ml-3 text-sm font-medium'}>
           {label}
         </span>
-      </div>
+
+        {/* Animated Background Pill */}
+        {active && (
+          <motion.div
+            layoutId={`activeNav-${variant}`} // Prevents the mobile/desktop layout calculation clash
+            className="absolute inset-0 -z-10 bg-primary shadow-md shadow-primary/20"
+            style={{ borderRadius: isMobile ? '1rem' : '0.75rem' }}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
+          />
+        )}
+      </motion.div>
     </Link>
   );
 });
