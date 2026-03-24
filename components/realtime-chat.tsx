@@ -50,7 +50,7 @@ export const RealtimeChat = ({
   const userTypingRef = useRef(false)
   const initialScrolledRef = useRef(false)
   const hasScrolledOnceRef = useRef(false)
-
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({}) // tempId → 0-100
   const {
     messages: realtimeMessages,
     sendMessage,
@@ -76,7 +76,6 @@ export const RealtimeChat = ({
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
-  const [isStartingCall, setIsStartingCall] = useState(false)
 
   const getMessageTimestamp = useCallback((message: ChatMessage) => {
     const rawTimestamp = message.createdAt ?? (message as { created_at?: string | null }).created_at ?? null
@@ -103,48 +102,6 @@ export const RealtimeChat = ({
     return sortedMessages
   }, [getMessageTimestamp, realtimeMessages])
 
-  const callPartner = useMemo(() => {
-    const newestPartnerMessage = [...allMessages]
-      .reverse()
-      .find((message) => {
-        const senderId = message.sender_id ?? message.user?.id
-        return Boolean(senderId && senderId !== currentUserId)
-      })
-
-    if (!newestPartnerMessage) {
-      return null
-    }
-
-    const userId = newestPartnerMessage.sender_id ?? newestPartnerMessage.user?.id
-    if (!userId) {
-      return null
-    }
-
-    return {
-      userId,
-      name: newestPartnerMessage.user?.name || 'Unknown user',
-    }
-  }, [allMessages, currentUserId])
-
-  const handleStartCall = useCallback(async () => {
-    if (!callPartner || !isConnected || isStartingCall) {
-      return
-    }
-
-    setIsStartingCall(true)
-
-    try {
-      await inviteAndStartCall({
-        partnerUserId: callPartner.userId,
-        partnerName: callPartner.name,
-        baseRoomName: roomName,
-      })
-    } catch (error) {
-      console.error('Failed to start call invitation:', error)
-      setIsStartingCall(false)
-    }
-  }, [callPartner, inviteAndStartCall, isConnected, isStartingCall, roomName])
-
   useEffect(() => {
     if (!isConnected) {
       return
@@ -162,7 +119,6 @@ export const RealtimeChat = ({
     }
   }, [broadcastPeerPresence, currentUserId, isConnected])
 
-  const isPartnerOnline = callPartner ? Boolean(peerDirectory[callPartner.userId]) : false
 
   useEffect(() => {
     if (onMessage) {
@@ -250,126 +206,122 @@ export const RealtimeChat = ({
   )
 
 const handleSendMessage = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-      if (!newMessage.trim() && !imagePreviewUrl) return
+  async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMessage.trim() && !selectedImageFile) return
 
-      let uploadedImageUrl: string | null = null
+    const tempId = crypto.randomUUID()
+    const localTimestamp = new Date().toISOString()
+    const localBlobUrl = imagePreviewUrl // capture before clearing
 
-      // Upload image if selected (and not already uploaded)
-      if (selectedImageFile && imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
-        setIsUploadingImage(true)
-        try {
+    // 1. Send optimistically with blob URL immediately
+    sendMessage({
+      id: tempId,
+      content: newMessage || null,
+      imageUrl: localBlobUrl || null,
+      createdAt: localTimestamp,
+    })
+
+    // Clear input immediately
+    setNewMessage('')
+    setSelectedImageFile(null)
+    setImagePreviewUrl(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    if (userTypingRef.current) {
+      userTypingRef.current = false
+      broadcastTypingStatus(false)
+    }
+
+    // 2. Upload image in background if any
+    let uploadedImageUrl: string | null = null
+    if (selectedImageFile && localBlobUrl) {
+    setIsUploadingImage(true)
+
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }))
+
+      try {
+        uploadedImageUrl = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
           const formData = new FormData()
           formData.append('file', selectedImageFile)
 
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
+          xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+              const pct = Math.round((event.loaded / event.total) * 100)
+              setUploadProgress((prev) => ({ ...prev, [tempId]: pct }))
+            }
           })
 
-          const data = await response.json()
-          if (!response.ok || !data.secureUrl) {
-            throw new Error(data.error || 'Upload failed')
-          }
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const data = JSON.parse(xhr.responseText)
+              if (data.secureUrl) resolve(data.secureUrl)
+              else reject(new Error('No secureUrl'))
+            } else {
+              reject(new Error(`Upload failed: ${xhr.status}`))
+            }
+          })
 
-          uploadedImageUrl = data.secureUrl
-        } catch (err) {
-          console.error('Image upload error:', err)
-          setIsUploadingImage(false)
-          return
-        } finally {
-          setIsUploadingImage(false)
-        }
-      } else if (imagePreviewUrl && !imagePreviewUrl.startsWith('blob:')) {
-        uploadedImageUrl = imagePreviewUrl
+          xhr.addEventListener('error', () => reject(new Error('Network error')))
+          xhr.open('POST', '/api/upload')
+          xhr.send(formData)
+        })
+
+        // Swap blob URL → real URL in local state
+        updateMessageLocally(tempId, { image_url: uploadedImageUrl })
+      } catch (err) {
+        console.error('Image upload error:', err)
+        // Keep the blob preview, mark as failed
+        updateMessageLocally(tempId, { content: (newMessage || '') + ' [image upload failed]' })
+      } finally {
+        setIsUploadingImage(false)
+
+        setUploadProgress((prev) => {
+          const next = { ...prev }
+          delete next[tempId]
+          return next
+        })
       }
+    }
 
-      // 1. Generate a temporary ID for optimistic UI
-      const tempId = crypto.randomUUID()
-      const localTimestamp = new Date().toISOString() // Capture local time
-
-      const messageData = {
+    // 3. Persist to DB
+    fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         content: newMessage || null,
         imageUrl: uploadedImageUrl || null,
-        clientTimestamp: localTimestamp, // Send to backend to save local time
+        clientTimestamp: localTimestamp,
+      }),
+    })
+    .then(async (res) => {
+      const data = await res.json()
+      if (res.ok && data.id) {
+        updateMessageLocally(tempId, {
+          id: data.id,
+          createdAt: data.created_at,
+        })
+        const recipientId = typeof data?.recipient_id === 'string' ? data.recipient_id : null
+        if (recipientId) await broadcastUnreadIncrement({ recipientId, delta: 1 })
+        window.dispatchEvent(new Event('messages:changed'))
       }
+    })
+    .catch((err) => console.error('Failed to save message to DB:', err))
 
-      // 2. Optimistically update UI immediately (before fetch)
-      sendMessage({
-        id: tempId, // Pass tempId so the local state knows which message this is
-        content: newMessage || null,
-        imageUrl: uploadedImageUrl || null,
-        createdAt: localTimestamp,
-      })
-
-      // 3. Send to backend for persistence
-      fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messageData),
-      })
-      .then(async (res) => {
-        const data = await res.json();
-        if (res.ok && data.id) {
-          // Swap the temp ID for the real DB ID so DELETE works without refresh
-          updateMessageLocally(tempId, { 
-            id: data.id, 
-            createdAt: data.created_at // sync exact database timestamp format if needed
-          }); 
-          
-          const recipientId = typeof data?.recipient_id === 'string' ? data.recipient_id : null;
-          if (recipientId) {
-            await broadcastUnreadIncrement({ recipientId, delta: 1 });
-          }
-          window.dispatchEvent(new Event('messages:changed'));
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to save message to DB:', err)
-        // Optional: deleteMessageLocally(tempId) if you want to remove it on failure
-      });
-
-      // Push notification to partner
-      void sendPushNotification(
-        newMessage.trim()
-          ? `${username}: ${newMessage.trim().slice(0, 100)}`
-          : `${username} sent an image`,
-        {
-          url: '/messages',
-          senderId: currentUserId,
-        }
-      )
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
-      }
-      if (userTypingRef.current) {
-        userTypingRef.current = false
-        broadcastTypingStatus(false)
-      }
-      
-      setNewMessage('')
-      setSelectedImageFile(null)
-      setImagePreviewUrl(null)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    },
-    [
-      newMessage, 
-      imagePreviewUrl, 
-      selectedImageFile, 
-      isConnected, 
-      sendMessage, 
-      broadcastTypingStatus, 
-      broadcastUnreadIncrement, 
-      username, 
-      currentUserId, 
-      sendPushNotification,
-      updateMessageLocally // Added to dependency array
-    ]
-  )
+    void sendPushNotification(
+      newMessage.trim()
+        ? `${username}: ${newMessage.trim().slice(0, 100)}`
+        : `${username} sent an image`,
+      { url: '/messages', senderId: currentUserId }
+    )
+  },
+  [
+    newMessage, imagePreviewUrl, selectedImageFile,
+    sendMessage, broadcastTypingStatus, broadcastUnreadIncrement,
+    username, currentUserId, sendPushNotification, updateMessageLocally,
+  ]
+)
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
       try {
@@ -390,7 +342,7 @@ const handleSendMessage = useCallback(
         await broadcastDeleteMessage(messageId)
         window.dispatchEvent(new Event('messages:changed'))
       } catch (error) {
-        console.error('❌ Failed to delete message:', error)
+        console.error('Failed to delete message:', error)
         throw error
       }
     },
@@ -423,7 +375,7 @@ const handleSendMessage = useCallback(
         await broadcastEditMessage(messageId, newContent)
         window.dispatchEvent(new Event('messages:changed'))
       } catch (error) {
-        console.error('❌ Failed to edit message:', error)
+        console.error('Failed to edit message:', error)
         throw error
       }
     },
@@ -443,7 +395,7 @@ const handleSendMessage = useCallback(
   )
 
   return (
-    <div className="relative flex h-full min-h-0 w-full rounded-lg flex-col bg-background text-foreground antialiased">
+    <div className="relative flex h-full min-h-0 w-full rounded-lg flex-col text-foreground overflow-hidden">
 
       {/* Messages */}
       <div ref={containerRef} className="flex-1 min-h-0 w-full space-y-4 overflow-y-auto p-3 pb-4 md:p-6 md:pb-4">
@@ -471,6 +423,7 @@ const handleSendMessage = useCallback(
                   showHeader={showHeader}
                   onEdit={handleEditMessage}
                   onDelete={handleDeleteMessage}
+                  uploadProgress={uploadProgress[message.id] ?? null} 
                 />
               </div>
             )
@@ -496,8 +449,9 @@ const handleSendMessage = useCallback(
 
       {/* Image preview */}
       {imagePreviewUrl && (
-        <div className="flex items-end gap-2 px-3 pb-2 md:px-6">
-          <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-border">
+        <div className="absolute bottom-20 left-3 flex items-start gap-2 bg-transparent">
+
+          <div className="relative w-20 h-20 rounded-lg overflow-hidden">
             <Image
               src={imagePreviewUrl}
               alt="Preview"
@@ -506,9 +460,9 @@ const handleSendMessage = useCallback(
               className="w-full h-full object-cover"
             />
           </div>
-          <Button
+                    <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="icon"
             onClick={() => {
               setImagePreviewUrl(null)
@@ -555,7 +509,7 @@ const handleSendMessage = useCallback(
 
         <Input
           className={cn(
-            'pointer-events-auto rounded-full bg-background text-sm transition-all duration-300',
+            'pointer-events-auto rounded-full text-sm transition-all duration-300',
             (newMessage.trim() || imagePreviewUrl)
               ? 'w-[calc(100%-80px)]'
               : 'w-full'

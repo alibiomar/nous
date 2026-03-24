@@ -163,12 +163,6 @@
     @apply bg-background text-foreground;
     letter-spacing: -0.3px;
     min-height: 100vh;
-    background-image:
-      radial-gradient(circle at 8% 12%, rgba(250, 139, 121, 0.36), transparent 34%),
-      radial-gradient(circle at 82% 6%, rgba(242, 193, 165, 0.42), transparent 38%),
-      radial-gradient(circle at 50% 100%, rgba(58, 54, 45, 0.12), transparent 35%),
-      linear-gradient(180deg, #efe3da 0%, #eae9e4 48%, #e6e3dc 100%);
-    background-attachment: fixed;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif font-semibold tracking-tight;

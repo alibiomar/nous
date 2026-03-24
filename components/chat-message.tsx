@@ -19,6 +19,7 @@ interface ChatMessageItemProps {
   showHeader: boolean
   onEdit?: (messageId: string, newContent: string) => Promise<void>
   onDelete?: (messageId: string) => Promise<void>
+  uploadProgress?: number | null
 }
 
 export const ChatMessageItem = ({ 
@@ -27,20 +28,18 @@ export const ChatMessageItem = ({
   showHeader,
   onEdit,
   onDelete,
+  uploadProgress,
 }: ChatMessageItemProps) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(message.content || '')
   const [isLoading, setIsLoading] = useState(false)
-  // 1. Start with an empty string so the server and client match initially
   const [formattedTime, setFormattedTime] = useState('')
 
-  // 2. Calculate the local time only after it reaches the user's browser
   useEffect(() => {
     if (!message.createdAt) return;
 
     let dateString = message.createdAt;
 
-    // Failsafe: ensure the string is treated as UTC even if formatting varies
     if (dateString.includes(' ') && !dateString.includes('+')) {
       dateString = dateString.replace(' ', 'T') + 'Z';
     } else if (!dateString.endsWith('Z') && !dateString.includes('+')) {
@@ -86,6 +85,8 @@ export const ChatMessageItem = ({
     }
   }
 
+  const isUploading = uploadProgress != null
+
   return (
     <div className={`group/message flex items-end mt-2 gap-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
       {!isOwnMessage && (
@@ -116,8 +117,43 @@ export const ChatMessageItem = ({
                 alt="Message image"
                 width={500}
                 height={400}
-                className="w-full h-auto object-cover"
+                className={cn(
+                  "w-full h-auto object-cover transition-opacity duration-300",
+                  isUploading && "opacity-50"
+                )}
               />
+
+              {/* Upload progress overlay */}
+              {isUploading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30">
+                  {/* Circular-ish progress bar */}
+                  <div className="relative flex items-center justify-center w-12 h-12">
+                    <svg className="w-12 h-12 -rotate-90" viewBox="0 0 44 44">
+                      <circle
+                        cx="22" cy="22" r="18"
+                        fill="none"
+                        stroke="rgba(255,255,255,0.2)"
+                        strokeWidth="3"
+                      />
+                      <circle
+                        cx="22" cy="22" r="18"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 18}`}
+                        strokeDashoffset={`${2 * Math.PI * 18 * (1 - (uploadProgress ?? 0) / 100)}`}
+                        className="transition-all duration-200"
+                      />
+                    </svg>
+                    <span className="absolute text-white text-[10px] font-semibold">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <span className="text-white text-[10px] font-medium drop-shadow">Uploading…</span>
+                </div>
+              )}
+
               <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                 {formattedTime}
               </span>
@@ -154,7 +190,6 @@ export const ChatMessageItem = ({
             </div>
           ) : (
             <div className="flex items-center ">
-
               {isOwnMessage && (
                 <div className="flex gap-1 px-2">
                   <DropdownMenu>
@@ -183,7 +218,7 @@ export const ChatMessageItem = ({
                   </DropdownMenu>
                 </div>
               )}
-                            {message.content && (
+              {message.content && (
                 <div
                   className={cn(
                     'py-2 px-3 rounded-xl text-sm w-fit',

@@ -11,11 +11,9 @@ export default function MessagesLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
       
       <main className="h-dvh overflow-hidden pt-20 pb-24 md:ml-72 md:h-screen md:pt-0 md:pb-0">
         {children}
       </main>
-    </div>
   );
 }
