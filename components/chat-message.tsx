@@ -162,7 +162,7 @@ export const ChatMessageItem = ({
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
+                        className="h-7 w-7 transition-opacity opacity-100 md:opacity-0 md:group-hover/message:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                         disabled={isLoading}
                         title="Message actions"
                         aria-label="Message actions"
