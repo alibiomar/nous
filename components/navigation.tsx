@@ -69,7 +69,10 @@ export function Navigation() {
       }
     };
   }, []);
-
+const isPublicRoute = pathname === '/login' || pathname === '/' || pathname.startsWith('/auth');
+  if (isPublicRoute) {
+    return null; // Hides the navigation completely
+  }
   const handleNavigateStart = React.useCallback((href: string) => {
     // don't show loader when clicking the already-active route
     if (isActive(href)) return;
