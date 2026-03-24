@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
-function createUserAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-      global: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    }
-  );
-}
+
 
 export async function PATCH(
   request: NextRequest,
@@ -32,18 +14,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token' }, { status: 401 });
-    }
-
     const { id: postId } = await params;
     const body = await request.json();
     const caption = typeof body?.caption === 'string' ? body.caption.trim() : '';
 
-    const supabase = createUserAuthenticatedClient(accessToken);
+    const supabase = await createClient();
 
     const { data: updatedPost, error } = await supabase
       .from('posts')
@@ -76,15 +51,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token' }, { status: 401 });
-    }
-
     const { id: postId } = await params;
-    const supabase = createUserAuthenticatedClient(accessToken);
+    const supabase = await createClient();
 
     const { error } = await supabase
       .from('posts')

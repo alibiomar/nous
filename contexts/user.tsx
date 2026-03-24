@@ -1,8 +1,9 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearAllDeviceCache } from '@/lib/device-cache';
+
 export interface User {
   id: string;
   email: string;
@@ -14,13 +15,16 @@ export interface User {
 interface UserContextType {
   user: User | null;
   isLoading: boolean;
+  /** Seed the context from an external source (e.g. login response) without
+   *  triggering a /api/auth/session round-trip. */
+  setUser: (user: User) => void;
   logout: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
@@ -28,63 +32,38 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const isPublicAuthRoute = pathname === '/login' || pathname.startsWith('/auth');
 
-    // If we're on a public route, no need to fetch session.
+    // On public routes the login page handles its own warmup via SplashScreen.
     if (isPublicAuthRoute) {
       setIsLoading(false);
       return;
     }
 
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/session', { cache: 'no-store' });
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
+const checkAuth = async () => {
+  try {
+    const response = await fetch('/api/auth/session');
+    
+    if (response.ok) {
+      // Safely handle empty bodies to prevent JSON.parse errors
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      setUserState(data?.user || null);
+    } else {
+      setUserState(null);
+    }
+  } catch (err) {
+    console.error('Failed to fetch session:', err);
+    setUserState(null); // Ensure state resolves safely on failure
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-          // --- WARMUP LOGIC ---
-          const promises: Promise<unknown>[] = [];
-          
-          // Pre-fetch stories
-          promises.push(fetch('/api/stories', { cache: 'no-store' }).catch(() => null));
-          
-          if (data.user) {
-            // Pre-fetch unread count
-            promises.push(fetch('/api/messages/unread-count', { cache: 'no-store' }).catch(() => null));
-          }
-          
-          // Safely execute DOM-dependent preloading
-          if (typeof window !== 'undefined') {
-            // Preload core image assets
-            for (const src of ['/logo.svg', '/animated_heart_icon.svg']) {
-              const img = new Image();
-              img.src = src;
-            }
-            
-            // Warm up YouTube API script
-            if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-              const s = document.createElement('script');
-              s.src = 'https://www.youtube.com/iframe_api';
-              s.async = true;
-              document.head.appendChild(s);
-            }
-          }
-
-          // Execute background fetches without blocking the UI
-          Promise.allSettled(promises);
-          // --------------------
-        } else {
-          setUser(null);
-        }
-      } catch (err) {
-        console.error('Failed to fetch session:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Run only once on mount to avoid re-checking on every navigation.
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setUser = useCallback((u: User) => {
+    setUserState(u);
   }, []);
 
   const logout = async () => {
@@ -94,10 +73,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         credentials: 'include',
         cache: 'no-store',
       });
-      setUser(null);
+      setUserState(null);
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('nous:call-session');
-        clearAllDeviceCache(); // <--- Safely deletes all messages, feeds, and private data
+        clearAllDeviceCache();
       }
       router.replace('/login');
       router.refresh();
@@ -109,7 +88,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <UserContext.Provider value={{ user, isLoading, logout }}>
+    <UserContext.Provider value={{ user, isLoading, setUser, logout }}>
       {children}
     </UserContext.Provider>
   );

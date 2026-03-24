@@ -1,48 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { getSession } from '@/lib/auth';
+import { getSession, createClient } from '@/lib/auth';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const supabaseAdmin = supabaseServiceRoleKey
-  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
+  ? createServiceClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
     })
   : null;
 
-async function createAuthedClient() {
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
-  const refreshToken = cookieStore.get('sb-refresh-token')?.value;
-
-  if (!accessToken || !refreshToken) {
-    return { supabase, error: 'Not authenticated' };
-  }
-
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-
-  if (error) {
-    return { supabase, error: error.message };
-  }
-
-  return { supabase, error: null };
-}
+// Authenticated per-request client uses the cookie-backed helper.
 
 // POST: Update typing status
 export async function POST(request: NextRequest) {
@@ -114,10 +84,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ isTyping: false, lastUpdate: null });
     }
 
-    const { supabase, error: authError } = await createAuthedClient();
-    if (authError) {
-      return NextResponse.json({ isTyping: false, lastUpdate: null });
-    }
+    const supabase = await createClient();
 
     try {
       // Get all users' typing status except current user

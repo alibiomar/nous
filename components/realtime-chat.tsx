@@ -14,7 +14,6 @@ import {
 } from '@/hooks/use-realtime-chat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useCall } from '@/contexts/call'
 
 interface RealtimeChatProps {
   roomName: string
@@ -41,7 +40,6 @@ export const RealtimeChat = ({
   onMessage,
   messages: initialMessages = [],
 }: RealtimeChatProps) => {
-  const { inviteAndStartCall } = useCall()
   const { containerRef, sentinelRef, scrollToBottom, scrollToBottomIfAtBottom } = useChatScroll()
   const { sendPushNotification } = usePushNotifications() // <-- Initialized the hook
   

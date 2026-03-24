@@ -57,7 +57,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <UserProvider>
-            <SplashScreen />
+            <SplashScreen  />
             <UnreadMessagesProvider>
               <CallProvider>
                 <Navigation />

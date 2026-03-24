@@ -1,27 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
 // Create client that will use user's JWT for auth context
-function createUserAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-      global: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    }
-  );
-}
 
 function decryptCommentRecord(comment: Record<string, unknown>) {
   const decryptedComment = decryptFields(comment, ['content']);
@@ -42,16 +23,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Get access token from cookies - not required for reading public data
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-    
-    const supabase = accessToken 
-      ? createUserAuthenticatedClient(accessToken)
-      : createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        );
+    // Use cookie-backed server client (will be authenticated if cookie present)
+    const supabase = await createClient();
 
     const { id: postId } = await params;
 
@@ -89,16 +62,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get access token from cookies
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-    
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token' }, { status: 401 });
-    }
-
-    // Create client with user's JWT context
-    const supabase = createUserAuthenticatedClient(accessToken);
+    const supabase = await createClient();
 
     const { content } = await request.json();
 

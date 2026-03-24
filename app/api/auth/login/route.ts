@@ -1,17 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { setAuthCookies } from '@/lib/auth';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  }
-);
+import { createClient } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +13,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 1. Initialize the new SSR client (this handles the cookies automatically!)
+    const supabase = await createClient();
+
+    // 2. Sign in with password
     const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -37,12 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAuthCookies(
-      data.session.access_token,
-      data.session.refresh_token,
-      data.session.expires_in
-    );
-
+    // 3. Format the user object exactly as your frontend expects it
     const metadata = data.user.user_metadata || {};
     const name =
       (typeof metadata.name === 'string' && metadata.name) ||
@@ -54,6 +41,7 @@ export async function POST(request: NextRequest) {
     const birthday =
       typeof metadata.birthday === 'string' ? metadata.birthday : null;
 
+    // 4. Return success! (Notice: No need to call setAuthCookies anymore)
     return NextResponse.json({
       success: true,
       user: {
@@ -65,7 +53,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Login Route Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

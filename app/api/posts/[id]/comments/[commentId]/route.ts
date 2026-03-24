@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
 
-function createUserAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-      global: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    }
-  );
-}
+
 
 function decryptCommentRecord(comment: Record<string, unknown>) {
   const decryptedComment = decryptFields(comment, ['content']);
@@ -46,13 +28,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token' }, { status: 401 });
-    }
-
     const { commentId } = await params;
     const body = await request.json();
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
@@ -61,7 +36,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Comment content is required' }, { status: 400 });
     }
 
-    const supabase = createUserAuthenticatedClient(accessToken);
+    const supabase = await createClient();
 
     const { data: updatedComment, error } = await supabase
       .from('comments')
@@ -94,15 +69,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token' }, { status: 401 });
-    }
-
     const { commentId } = await params;
-    const supabase = createUserAuthenticatedClient(accessToken);
+    const supabase = await createClient();
 
     const { error } = await supabase
       .from('comments')

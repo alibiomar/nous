@@ -1,69 +1,69 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+import { NextResponse, type NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // 1. Create a baseline response that we can modify with new cookies if needed
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
 
-  // 1. Define routes that do NOT require authentication
-  const isPublicRoute = pathname === '/login';
-
-  // 2. Get the access token from cookies
-  const accessToken = request.cookies.get('sb-access-token')?.value;
-
-  let isAuthValid = false;
-
-  // 3. HIGH LEVEL SECURITY: Cryptographically verify the token
-  if (accessToken) {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+  // 2. Create the Supabase SSR client for Middleware
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          // If Supabase needs to refresh the token, it will call this method.
+          
+          // Update the request cookies so Server Components see the new token
+          cookiesToSet.forEach(({ name, value, options }) => 
+            request.cookies.set(name, value)
+          );
+          
+          // Re-create the response to ensure headers are fresh
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          
+          // Update the response cookies so the browser saves the new token
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
       },
-    });
-
-    // getUser() sends the token to the Supabase Auth server.
-    // It will fail if the token is fake, expired, or if the user was banned/deleted.
-    const { data, error } = await supabase.auth.getUser(accessToken);
-
-    if (!error && data?.user) {
-      isAuthValid = true;
     }
+  );
+
+  // 3. Securely verify the session. 
+  // If the token is expired, this automatically triggers the `setAll` block above!
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const isPublicRoute = request.nextUrl.pathname === '/login';
+
+  // 4. Redirect unauthenticated users
+  if (!user && !isPublicRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
-  // 4. If the user is NOT cryptographically verified and trying to access a protected route
-  if (!isPublicRoute && !isAuthValid) {
-    // Clear the invalid cookies so the browser doesn't get stuck in a bad state
-    const response = NextResponse.redirect(new URL('/login', request.url));
-    response.cookies.delete('sb-access-token');
-    response.cookies.delete('sb-refresh-token');
-    return response;
+  // 5. Redirect authenticated users away from the login page
+  if (user && isPublicRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/feed';
+    return NextResponse.redirect(url);
   }
 
-  // 5. If the user IS verified and tries to go to the login page, push them to the feed
-  if (isPublicRoute && isAuthValid && pathname === '/login') {
-    return NextResponse.redirect(new URL('/feed', request.url));
-  }
-
-  // 6. Token is valid and route is correct, allow the request
-  return NextResponse.next();
+  // 6. Return the response (which contains any refreshed cookies!)
+  return supabaseResponse;
 }
 
-// Configure which routes the middleware should run on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files like CSS/JS)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - manifest.json (web app manifest)
-     * - any public asset files (e.g., .svg, .png, .jpg)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|json|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|icon.svg|apple-icon.png|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

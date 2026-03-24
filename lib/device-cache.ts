@@ -37,18 +37,20 @@ export function readDeviceCache<T>(key: string): T | null {
 }
 
 export function writeDeviceCache<T>(key: string, value: T, ttlMs: number) {
-  if (typeof window === 'undefined') {
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
+  // ✅ prevent undefined from ever being cached
+  if (value === undefined) return;
+  if (key.includes('undefined')) return;
   try {
     const payload: CacheEnvelope<T> = {
       value,
       expiresAt: Date.now() + ttlMs,
     };
+
     window.localStorage.setItem(key, JSON.stringify(payload));
   } catch {
-    // ignore quota exceeded or other errors
+    // ignore
   }
 }
 

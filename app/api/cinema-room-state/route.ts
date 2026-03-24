@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSession } from '@/lib/auth';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { getSession, createClient } from '@/lib/auth';
+import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey =
@@ -13,46 +13,21 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 // How many votes are needed to clear the room
 const VOTES_REQUIRED = 2;
 
-async function createAuthedClient(): Promise<{
-  supabase: SupabaseClient;
-  error: string | null;
-}> {
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
-  const refreshToken = cookieStore.get('sb-refresh-token')?.value;
-
-  if (!accessToken || !refreshToken) {
-    return { supabase, error: 'Not authenticated' };
-  }
-
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-
-  if (error) return { supabase, error: error.message };
-  return { supabase, error: null };
-}
-
 async function createRoomClient(): Promise<{
   supabase: SupabaseClient;
   authError: string | null;
 }> {
   if (supabaseServiceRoleKey) {
     return {
-      supabase: createClient(supabaseUrl, supabaseServiceRoleKey, {
+      supabase: createServiceClient(supabaseUrl, supabaseServiceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       }),
       authError: null,
     };
   }
 
-  const { supabase, error } = await createAuthedClient();
-  return { supabase, authError: error };
+  const supabase = await createClient();
+  return { supabase, authError: null };
 }
 
 // ─── GET — fetch room state + clear vote count ────────────────────────────────

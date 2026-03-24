@@ -1,25 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
-
-const ACCESS_TOKEN_COOKIE = 'sb-access-token';
-const REFRESH_TOKEN_COOKIE = 'sb-refresh-token';
-
-function isCookieMutationContextError(error: unknown) {
-  return (
-    error instanceof Error &&
-    error.message.includes('Cookies can only be modified in a Server Action or Route Handler')
-  );
-}
 
 export interface AuthSessionUser {
   userId: string;
@@ -32,11 +12,7 @@ export interface AuthSessionUser {
 function getUserName(user: { email?: string | null; user_metadata?: Record<string, unknown> }) {
   const metadata = user.user_metadata || {};
   const name = metadata.name || metadata.full_name;
-
-  if (typeof name === 'string' && name.trim().length > 0) {
-    return name;
-  }
-
+  if (typeof name === 'string' && name.trim().length > 0) return name;
   return user.email || '';
 }
 
@@ -44,97 +20,54 @@ function getUserMetadataFields(user: { user_metadata?: Record<string, unknown> }
   const metadata = user.user_metadata || {};
   const avatarUrl = typeof metadata.avatar_url === 'string' ? metadata.avatar_url : null;
   const birthday = typeof metadata.birthday === 'string' ? metadata.birthday : null;
-
   return { avatarUrl, birthday };
 }
 
-export async function getSession(): Promise<AuthSessionUser | null> {
+// Reusable Supabase client for Server Components, Server Actions, and Route Handlers
+export async function createClient() {
   const cookieStore = await cookies();
-  const accessToken = cookieStore.get(ACCESS_TOKEN_COOKIE)?.value;
-  const refreshToken = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
 
-  if (!accessToken && !refreshToken) return null;
-
-  if (accessToken) {
-    const { data, error } = await authClient.auth.getUser(accessToken);
-    if (!error && data?.user) {
-      const { avatarUrl, birthday } = getUserMetadataFields(data.user);
-      return {
-        userId: data.user.id,
-        email: data.user.email || '',
-        name: getUserName(data.user),
-        avatarUrl,
-        birthday,
-      };
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Next.js throws an error if you modify cookies inside a Server Component.
+            // We safely swallow it here because our Middleware already handled the refresh!
+          }
+        },
+      },
     }
-  }
+  );
+}
 
-  if (!refreshToken) return null;
+// Your clean, modernized getSession function
+export async function getSession(): Promise<AuthSessionUser | null> {
+  const supabase = await createClient();
 
-  const { data: refreshed, error: refreshError } = await authClient.auth.refreshSession({
-    refresh_token: refreshToken,
-  });
+  // Simply call getUser(). The SSR client handles the cookies automatically.
+  const { data, error } = await supabase.auth.getUser();
 
-  if (refreshError || !refreshed?.session || !refreshed.user) {
+  if (error || !data?.user) {
     return null;
   }
 
-  try {
-    await setAuthCookies(
-      refreshed.session.access_token,
-      refreshed.session.refresh_token,
-      refreshed.session.expires_in
-    );
-  } catch (error) {
-    // Server Components cannot mutate cookies during render; skip persistence in that context.
-    if (!isCookieMutationContextError(error)) {
-      throw error;
-    }
-  }
-
-  const { avatarUrl, birthday } = getUserMetadataFields(refreshed.user);
+  const { avatarUrl, birthday } = getUserMetadataFields(data.user);
+  
   return {
-    userId: refreshed.user.id,
-    email: refreshed.user.email || '',
-    name: getUserName(refreshed.user),
+    userId: data.user.id,
+    email: data.user.email || '',
+    name: getUserName(data.user),
     avatarUrl,
     birthday,
   };
 }
-
-export async function setAuthCookies(
-  accessToken: string,
-  refreshToken: string,
-  expiresInSeconds?: number
-): Promise<void> {
-  const cookieStore = await cookies();
-  const maxAge = expiresInSeconds && expiresInSeconds > 0 ? expiresInSeconds : 60 * 60;
-
-  cookieStore.set(ACCESS_TOKEN_COOKIE, accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge,
-  });
-
-  cookieStore.set(REFRESH_TOKEN_COOKIE, refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30,
-  });
-}
-
-export async function clearAuthCookies(): Promise<void> {
-  try {
-    const cookieStore = await cookies();
-    cookieStore.delete(ACCESS_TOKEN_COOKIE);
-    cookieStore.delete(REFRESH_TOKEN_COOKIE);
-  } catch (error) {
-    if (!isCookieMutationContextError(error)) {
-      throw error;
-    }
-  }
-}
-
-

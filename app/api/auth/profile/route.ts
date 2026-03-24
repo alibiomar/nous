@@ -1,18 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { getSession } from '@/lib/auth';
+import { createClient, getSession } from '@/lib/auth';
 import { encryptFields } from '@/lib/db-encryption';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
 
 function cleanString(value: unknown) {
   if (typeof value !== 'string') return null;
@@ -22,14 +10,9 @@ function cleanString(value: unknown) {
 
 export async function GET() {
   try {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return NextResponse.json(
-        { error: 'Supabase credentials are missing' },
-        { status: 500 }
-      );
-    }
-
+    // getSession() now uses the secure SSR client under the hood!
     const session = await getSession();
+    
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -54,13 +37,6 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return NextResponse.json(
-        { error: 'Supabase credentials are missing' },
-        { status: 500 }
-      );
-    }
-
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -75,26 +51,9 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'No profile updates provided' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
-    const refreshToken = cookieStore.get('sb-refresh-token')?.value;
-
-    if (!accessToken || !refreshToken) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-
-    if (sessionError) {
-      console.error('Profile session error:', sessionError);
-      return NextResponse.json(
-        { error: sessionError.message || 'Failed to load session' },
-        { status: 401 }
-      );
-    }
+    // 1. Initialize the new SSR client.
+    // Notice: We don't need to read cookies or call setSession manually anymore!
+    const supabase = await createClient();
 
     const nextMetadata = {
       ...(name ? { name } : {}),
@@ -102,6 +61,7 @@ export async function PUT(request: Request) {
       ...(birthday ? { birthday } : {}),
     };
 
+    // 2. Safely update auth metadata. The client uses the verified secure cookies automatically.
     const { data: updated, error: updateError } = await supabase.auth.updateUser({
       data: nextMetadata,
     });
@@ -114,6 +74,7 @@ export async function PUT(request: Request) {
       );
     }
 
+    // 3. Update the custom database table securely
     if (name || avatarUrl) {
       const encryptedProfileUpdate = encryptFields(
         {
