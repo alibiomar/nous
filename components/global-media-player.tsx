@@ -845,7 +845,7 @@ function AddMediaModal({
                 value={query}
                 onChange={e => handleQueryChange(e.target.value)}
                 placeholder="Song name, artist, lyrics…"
-                className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-4 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                className="w-full h-11 rounded-2xl border border-border/70 bg-background/60 pl-9 pr-4 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-colors"
               />
               {searching && (
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />

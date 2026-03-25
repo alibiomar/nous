@@ -177,6 +177,15 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif font-semibold tracking-tight;
   }
+  /* Ensure form controls have a readable minimum font size */
+  input,
+  textarea,
+  select,
+  button,
+  [contenteditable] {
+    font-size: 16px;
+    line-height: 1.4;
+  }
 }
 
 @layer utilities {

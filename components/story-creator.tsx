@@ -1214,7 +1214,7 @@ const { sendPushNotification } = usePushNotifications();
                 onChange={e => setActiveText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addText(); }}
                 placeholder="Type something…"
-                className="flex-1 bg-transparent text-white placeholder:text-white/35 text-sm outline-none" />
+                className="flex-1 bg-transparent text-white placeholder:text-white/35 outline-none" />
               <button type="button" onClick={addText} className="rounded-full bg-white p-1.5 text-black shrink-0">
                 <Check className="h-3.5 w-3.5" />
               </button>

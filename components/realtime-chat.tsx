@@ -509,7 +509,7 @@ const handleEditMessage = useCallback(
 
         <Input
           className={cn(
-            'pointer-events-auto rounded-full text-sm transition-all duration-300',
+            'pointer-events-auto rounded-full transition-all duration-300',
             (newMessage.trim() || imagePreviewUrl)
               ? 'w-[calc(100%-80px)]'
               : 'w-full'

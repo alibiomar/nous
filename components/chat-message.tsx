@@ -164,7 +164,6 @@ export const ChatMessageItem = ({
               <Input
                 value={editedContent}
                 onChange={(e) => setEditedContent(e.target.value)}
-                className="text-sm"
                 disabled={isLoading}
               />
               <Button
