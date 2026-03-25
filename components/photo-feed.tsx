@@ -447,7 +447,7 @@ function PostCard({
               value={editedPostCaption}
               onChange={(event) => setEditedPostCaption(event.target.value)}
               rows={2}
-              className="w-full resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-[16px]  focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <div className="flex justify-end gap-2">
               <Button
@@ -588,7 +588,7 @@ function PostCard({
                           value={editedCommentContent}
                           onChange={(event) => setEditedCommentContent(event.target.value)}
                           rows={2}
-                          className="w-full resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-[16px] focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <div className="flex justify-end gap-2">
                           <Button
@@ -637,7 +637,7 @@ function PostCard({
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Add a comment..."
               rows={1}
-              className="flex-1 resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-text-tertiary"
+              className="flex-1 resize-none border border-border rounded-lg px-3 py-2 bg-card text-foreground text-[16px] focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-text-tertiary"
             />
             <Button
               onClick={handlePostComment}

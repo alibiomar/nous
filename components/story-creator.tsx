@@ -1315,7 +1315,7 @@ const { sendPushNotification } = usePushNotifications();
                 </div>
                 <textarea value={caption} onChange={e => setCaption(e.target.value)}
                   placeholder="Write a caption…" rows={3}
-                  className="w-full resize-none rounded-2xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:outline-none focus:border-primary/40 transition-colors" />
+                  className="w-full resize-none rounded-2xl border border-border/70 bg-background/60 px-4 py-3 text-[16px]  text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:outline-none focus:border-primary/40 transition-colors" />
                 {postError && (
                   <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{postError}</p>
                 )}

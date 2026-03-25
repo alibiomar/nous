@@ -244,7 +244,7 @@ export function SharePhotoModal({ open, onOpenChange, onPosted }: SharePhotoModa
               onChange={(e) => setCaption(e.target.value)}
               placeholder="Share your thoughts..."
               rows={3}
-              className="w-full resize-none rounded-2xl border border-border/60 bg-secondary/40 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+              className="w-full resize-none rounded-2xl border border-border/60 bg-secondary/40 px-4 py-3 text-[16px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
             />
           </div>
 
