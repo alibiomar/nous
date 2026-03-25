@@ -6,7 +6,7 @@ import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { createClient } from '@/lib/client';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
-
+import { useUser } from '@/contexts/user';
 type MoviePayload = {
   title: string;
   embed: string | null;
@@ -27,6 +27,8 @@ export default function CinemaMoviePage() {
   const search = useSearchParams();
   const roomParam = search?.get('room') ?? 'cinema:shared';
   const supabase = createClient();
+    const { user } = useUser();
+  const currentUserId = user?.id;
   const syncId = useMemo(() => slug ? `cinema:movie:${slug}` : null, [slug]);
 
   const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
@@ -218,6 +220,7 @@ export default function CinemaMoviePage() {
         className="h-[56vw] max-h-[70vh] min-h-75 w-full"
         externalSyncEvent={externalSyncEvent}
         onPlaybackChange={handlePlaybackChange}
+        currentUserId={currentUserId}
       />
     );
   };

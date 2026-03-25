@@ -208,12 +208,14 @@ function GenericEmbedPlayer({
   className,
   externalSyncEvent,
   onPlaybackChange,
+  currentUserId,  
 }: {
   src: string;
   title?: string;
   className?: string;
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
+  currentUserId?: string;
 }) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,10 +233,13 @@ function GenericEmbedPlayer({
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-  const notify = (msg: string) => {
+const notify = (msg: string, currentUserId?: string) => {
     showToast(msg);
     if (navigator.vibrate) navigator.vibrate(50);
-    void sendPushNotification(msg, { url: '/cinema' });
+    void sendPushNotification(msg, {
+      url: '/cinema',
+      senderId: currentUserId,   // ← exclude the person who triggered it, not the receiver
+    });
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
       try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
     }
@@ -249,7 +254,7 @@ function GenericEmbedPlayer({
     const msg = externalSyncEvent.action === 'play'
       ? `Partner played${time}`
       : `Partner paused${time}`;
-    notify(msg);
+    notify(msg, externalSyncEvent.senderId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalSyncEvent]);
 
@@ -324,12 +329,14 @@ export function TuniflixEmbedPlayer({
   className,
   externalSyncEvent,
   onPlaybackChange,
+   currentUserId,
 }: {
   src: string;
   title?: string;
   className?: string;
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
+  currentUserId?: string;
 }) {
   const senderIdRef = useRef(
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -357,6 +364,7 @@ export function TuniflixEmbedPlayer({
       className={className}
       externalSyncEvent={externalSyncEvent}
       onPlaybackChange={onPlaybackChange}
+      currentUserId={currentUserId}
     />
   );
 }

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/client';
-import type { HlsPlaybackPayload } from '@/components/tuniflix-hls-player';
+import type { HlsPlaybackPayload } from '@/components/tuniflix-embed-player';
 
 export function useCinemaSync(syncId: string | null) {
   const supabase = createClient();

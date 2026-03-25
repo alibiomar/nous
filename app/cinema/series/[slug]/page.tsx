@@ -13,7 +13,7 @@ import {
 import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
-
+import { useUser } from '@/contexts/user';
 type Episode = {
   title: string;
   slug: string | null;
@@ -66,7 +66,8 @@ export default function CinemaSeriesPage() {
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [watchedSlugs, setWatchedSlugs] = useState<Set<string>>(new Set());
-
+    const { user } = useUser();
+  const currentUserId = user?.id;
   // ── Version ref ────────────────────────────────────────────────────────────
   // Incremented every time THIS client picks an episode locally.
   // Remote DB updates are only applied when they carry a higher version,
@@ -409,6 +410,7 @@ export default function CinemaSeriesPage() {
         className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
         externalSyncEvent={externalSyncEvent}
         onPlaybackChange={handlePlaybackChange}
+        currentUserId={currentUserId}
       />
     );
   };
