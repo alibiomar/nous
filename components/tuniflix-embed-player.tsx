@@ -234,7 +234,7 @@ function GenericEmbedPlayer({
   const notify = (msg: string) => {
     showToast(msg);
     if (navigator.vibrate) navigator.vibrate(50);
-    void sendPushNotification(msg);
+    void sendPushNotification(msg, { url: '/cinema' });
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
       try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
     }

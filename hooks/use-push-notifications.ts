@@ -120,25 +120,25 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Generic function to send push notifications anywhere in the app
-  const sendPushNotification = useCallback(async (
-    message: string, 
-    options?: SendPushOptions
-  ): Promise<void> => {
-    try {
-      await fetch('/api/push/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message, 
-          url: options?.url,             // e.g., '/cinema', '/chat', '/feed'
-          senderId: options?.senderId    // e.g., current user's ID to exclude their own devices
-        }),
-      });
-    } catch (err) {
-      console.error('Failed to send push notification:', err);
-    }
-  }, []);
+const sendPushNotification = useCallback(async (
+  message: string,
+  options?: SendPushOptions
+): Promise<void> => {
+  try {
+    await fetch('/api/push/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',          // ← add this
+      body: JSON.stringify({
+        message,
+        url: options?.url,
+        senderId: options?.senderId,
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to send push notification:', err);
+  }
+}, []);
 
   return { status, subscribe, unsubscribe, sendPushNotification };
 }
