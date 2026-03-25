@@ -17,62 +17,72 @@ export function useCinemaSync(syncId: string | null) {
       : `host-${Math.random().toString(36).slice(2)}`
   );
 
-useEffect(() => {
-  if (!syncId) return;
+  // Expose senderId so TuniflixEmbedPlayer can share the same identity
+  // and avoid double-filtering its own echoes.
+  const senderId = senderIdRef.current;
 
-  const ch = supabase
-    .channel(`cinema-sync-${syncId}`, {
-      config: { broadcast: { self: false, ack: false } },
-    })
-    .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
-      console.log('[cinema-sync] received', message);
-      const payload = message.payload as Partial<HlsPlaybackPayload>;
-      if (!payload || payload.syncId !== syncId) return;
-      if (payload.senderId === senderIdRef.current) return;
-
-      if (payload.action === 'play') setIsPlaying(true);
-      if (payload.action === 'pause') setIsPlaying(false);
-
-      setExternalSyncEvent(payload as HlsPlaybackPayload);
-      console.log('[cinema-sync] set externalSyncEvent:', payload);
-
-    })
-    .subscribe((status: string) => {
-      console.log('[cinema-sync] status', status);
-      if (status === 'SUBSCRIBED') {
-        channelRef.current = ch; // ← only assign after confirmed subscribed
-      } else {
-        channelRef.current = null; // ← clear on any other status
-      }
-    });
-
-  return () => {
-    channelRef.current = null;
-    void supabase.removeChannel(ch);
-  };
-}, [syncId, supabase]);
-  // Called by the player when the local user plays/pauses/seeks
-const handlePlaybackChange = useCallback(
-  async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
-    console.log('[sync] handlePlaybackChange called', action, currentTime, 'syncId:', syncId, 'channel:', !!channelRef.current);
+  useEffect(() => {
     if (!syncId) return;
-    const ch = channelRef.current;
-    if (!ch) return;
-    const result = await ch.send({
-      type: 'broadcast',
-      event: 'playback',
-      payload: {
-        syncId,
-        senderId: senderIdRef.current,
-        action,
-        currentTime,
-        happenedAt: Date.now(),
-      } satisfies HlsPlaybackPayload,
-    });
-    console.log('[sync] send result:', result);
-  },
-  [syncId]
-);
 
-  return { externalSyncEvent, isPlaying, handlePlaybackChange };
+    const ch = supabase
+      .channel(`cinema-sync-${syncId}`, {
+        config: { broadcast: { self: false, ack: false } },
+      })
+      .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
+        console.log('[cinema-sync] received', message);
+        const payload = message.payload as Partial<HlsPlaybackPayload>;
+        if (!payload || payload.syncId !== syncId) return;
+        if (payload.senderId === senderIdRef.current) return;
+
+        if (payload.action === 'play') setIsPlaying(true);
+        if (payload.action === 'pause') setIsPlaying(false);
+
+        // ✅ Spread into a NEW object with a unique receivedAt stamp so that
+        //    React always sees a changed reference and re-renders consumers,
+        //    even when two consecutive events share the same action/currentTime.
+        const stamped: HlsPlaybackPayload = {
+          ...(payload as HlsPlaybackPayload),
+          receivedAt: Date.now(),
+        };
+        setExternalSyncEvent(stamped);
+        console.log('[cinema-sync] set externalSyncEvent:', stamped);
+      })
+      .subscribe((status: string) => {
+        console.log('[cinema-sync] status', status);
+        if (status === 'SUBSCRIBED') {
+          channelRef.current = ch;
+        } else {
+          channelRef.current = null;
+        }
+      });
+
+    return () => {
+      channelRef.current = null;
+      void supabase.removeChannel(ch);
+    };
+  }, [syncId, supabase]);
+
+  const handlePlaybackChange = useCallback(
+    async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
+      console.log('[sync] handlePlaybackChange called', action, currentTime, 'syncId:', syncId, 'channel:', !!channelRef.current);
+      if (!syncId) return;
+      const ch = channelRef.current;
+      if (!ch) return;
+      const result = await ch.send({
+        type: 'broadcast',
+        event: 'playback',
+        payload: {
+          syncId,
+          senderId: senderIdRef.current,
+          action,
+          currentTime,
+          happenedAt: Date.now(),
+        } satisfies HlsPlaybackPayload,
+      });
+      console.log('[sync] send result:', result);
+    },
+    [syncId]
+  );
+
+  return { externalSyncEvent, isPlaying, handlePlaybackChange, senderId };
 }

@@ -31,7 +31,8 @@ export default function CinemaMoviePage() {
   const currentUserId = user?.id;
   const syncId = useMemo(() => slug ? `cinema:movie:${slug}` : null, [slug]);
 
-  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
+  const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(syncId);
+
 
   const [movie, setMovie] = useState<MoviePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -217,14 +218,16 @@ export default function CinemaMoviePage() {
       <TuniflixEmbedPlayer
         src={movie.embed}
         title={movie.title || 'Movie player'}
-        className="h-[56vw] max-h-[70vh] min-h-75 w-full"
+        className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
         externalSyncEvent={externalSyncEvent}
         onPlaybackChange={handlePlaybackChange}
         currentUserId={currentUserId}
+        senderId={senderId}
       />
     );
   };
 
+  
   return (
     <div className="space-y-5">
       <section className="glass-panel rounded-3xl p-5 md:p-7">

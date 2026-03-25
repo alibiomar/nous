@@ -13,6 +13,9 @@ export interface HlsPlaybackPayload {
   action: PlaybackAction;
   currentTime: number;
   happenedAt: number;
+  /** Stamped by useCinemaSync on receipt — guarantees a new object reference
+   *  for every incoming event so React always re-renders consumers. */
+  receivedAt?: number;
 }
 
 // ─── YouTube helpers ──────────────────────────────────────────────────────────
@@ -208,7 +211,7 @@ function GenericEmbedPlayer({
   className,
   externalSyncEvent,
   onPlaybackChange,
-  currentUserId,  
+  currentUserId,
 }: {
   src: string;
   title?: string;
@@ -227,27 +230,34 @@ function GenericEmbedPlayer({
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  // ✅ Stable ref so the notify closure inside useEffect never goes stale.
   const showToast = (msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-// GenericEmbedPlayer — remove sendPushNotification from notify entirely
-const notify = (msg: string) => {
-  showToast(msg);
-  if (navigator.vibrate) navigator.vibrate(50);
-  // NO push here anymore
-  if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-    try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
-  }
-};
+  const showToastRef = useRef(showToast);
+  useEffect(() => { showToastRef.current = showToast; });
 
-  // Notify when partner syncs
+  const notify = (msg: string) => {
+    showToastRef.current(msg);
+    if (navigator.vibrate) navigator.vibrate(50);
+    if (
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted' &&
+      document.visibilityState === 'hidden'
+    ) {
+      try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
+    }
+  };
+
+  // ✅ externalSyncEvent is now always a fresh object (stamped with receivedAt)
+  //    so this effect reliably fires for every incoming event.
   useEffect(() => {
-      console.log('[embed] effect fired, externalSyncEvent:', externalSyncEvent);
-
+    console.log('[embed] effect fired, externalSyncEvent:', externalSyncEvent);
     if (!externalSyncEvent) return;
+
     const time = externalSyncEvent.currentTime > 0
       ? ` at ${formatTime(externalSyncEvent.currentTime)}`
       : '';
@@ -255,6 +265,8 @@ const notify = (msg: string) => {
       ? `Partner played${time}`
       : `Partner paused${time}`;
     notify(msg);
+  // receivedAt is the stable trigger; the rest are read inside but don't need
+  // to be deps because notify/formatTime are module-stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalSyncEvent]);
 
@@ -275,27 +287,28 @@ const notify = (msg: string) => {
       {/* Sync overlay — floats above the player controls area */}
       <div className="mt-2 flex items-center gap-2 px-1 flex-wrap bg-transparent py-2">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
-<Button
-  type="button"
-  onClick={() => {
-    onPlaybackChange?.('play', 0);
-    void sendPushNotification('Partner played', { url: '/cinema', senderId: currentUserId });
-  }}
->
-  <Play className="h-3 w-3" />
-  I played
-</Button>
+        <Button
+          type="button"
+          onClick={() => {
+            onPlaybackChange?.('play', 0);
+            void sendPushNotification('Partner played', { url: '/cinema', senderId: currentUserId });
+          }}
+        >
+          <Play className="h-3 w-3" />
+          I played
+        </Button>
 
-<Button
-  type="button"
-  onClick={() => {
-    onPlaybackChange?.('pause', 0);
-    void sendPushNotification('Partner paused', { url: '/cinema', senderId: currentUserId });
-  }}
->
-  <Pause className="h-3 w-3" />
-  I paused
-</Button>
+        <Button
+          type="button"
+          onClick={() => {
+            onPlaybackChange?.('pause', 0);
+            void sendPushNotification('Partner paused', { url: '/cinema', senderId: currentUserId });
+          }}
+        >
+          <Pause className="h-3 w-3" />
+          I paused
+        </Button>
+
         {externalSyncEvent && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-primary fixed top-2">
             {externalSyncEvent.action === 'play'
@@ -332,7 +345,10 @@ export function TuniflixEmbedPlayer({
   className,
   externalSyncEvent,
   onPlaybackChange,
-   currentUserId,
+  currentUserId,
+  // ✅ Accept the shared senderId from useCinemaSync so both the hook and
+  //    the YouTube sub-player use the same identity for self-filtering.
+  senderId,
 }: {
   src: string;
   title?: string;
@@ -340,12 +356,21 @@ export function TuniflixEmbedPlayer({
   externalSyncEvent?: HlsPlaybackPayload | null;
   onPlaybackChange?: (action: PlaybackAction, currentTime: number) => void;
   currentUserId?: string;
+  senderId?: string;
 }) {
+  // Fall back to a local ID only when the parent doesn't supply one.
   const senderIdRef = useRef(
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    senderId ??
+    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
-      : `embed-${Math.random().toString(36).slice(2)}`
+      : `embed-${Math.random().toString(36).slice(2)}`)
   );
+
+  // Keep the ref in sync if the parent-supplied senderId changes (shouldn't,
+  // but guards against edge-cases like HMR).
+  useEffect(() => {
+    if (senderId) senderIdRef.current = senderId;
+  }, [senderId]);
 
   if (isYouTubeSrc(src)) {
     return (

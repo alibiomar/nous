@@ -81,7 +81,7 @@ export default function CinemaSeriesPage() {
       : null,
     [slug, selectedEpisode?.slug]
   );
-  const { externalSyncEvent, handlePlaybackChange } = useCinemaSync(syncId);
+const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(syncId);
 
 
 
@@ -387,6 +387,8 @@ export default function CinemaSeriesPage() {
   };
 
   // ── Player ────────────────────────────────────────────────────────────────
+// ── Player ────────────────────────────────────────────────────────────────
+  // (only the renderPlayer function changed — pass senderId down)
   const renderPlayer = () => {
     if (isLoadingEpisode) {
       return (
@@ -411,6 +413,7 @@ export default function CinemaSeriesPage() {
         externalSyncEvent={externalSyncEvent}
         onPlaybackChange={handlePlaybackChange}
         currentUserId={currentUserId}
+        senderId={senderId}  // ✅ share the hook's senderId so YT player self-filters correctly
       />
     );
   };
