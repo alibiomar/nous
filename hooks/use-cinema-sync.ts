@@ -34,6 +34,8 @@ useEffect(() => {
       if (payload.action === 'pause') setIsPlaying(false);
 
       setExternalSyncEvent(payload as HlsPlaybackPayload);
+      console.log('[cinema-sync] set externalSyncEvent:', payload);
+
     })
     .subscribe((status: string) => {
       console.log('[cinema-sync] status', status);

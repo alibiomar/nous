@@ -233,20 +233,20 @@ function GenericEmbedPlayer({
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-const notify = (msg: string, currentUserId?: string) => {
-    showToast(msg);
-    if (navigator.vibrate) navigator.vibrate(50);
-    void sendPushNotification(msg, {
-      url: '/cinema',
-      senderId: currentUserId,   // ← exclude the person who triggered it, not the receiver
-    });
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-      try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
-    }
-  };
+// GenericEmbedPlayer — remove sendPushNotification from notify entirely
+const notify = (msg: string) => {
+  showToast(msg);
+  if (navigator.vibrate) navigator.vibrate(50);
+  // NO push here anymore
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+    try { new Notification('🎬 Cinema sync', { body: msg, silent: true }); } catch { /* ignore */ }
+  }
+};
 
   // Notify when partner syncs
   useEffect(() => {
+      console.log('[embed] effect fired, externalSyncEvent:', externalSyncEvent);
+
     if (!externalSyncEvent) return;
     const time = externalSyncEvent.currentTime > 0
       ? ` at ${formatTime(externalSyncEvent.currentTime)}`
@@ -254,7 +254,7 @@ const notify = (msg: string, currentUserId?: string) => {
     const msg = externalSyncEvent.action === 'play'
       ? `Partner played${time}`
       : `Partner paused${time}`;
-    notify(msg, externalSyncEvent.senderId);
+    notify(msg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalSyncEvent]);
 
@@ -275,24 +275,27 @@ const notify = (msg: string, currentUserId?: string) => {
       {/* Sync overlay — floats above the player controls area */}
       <div className="mt-2 flex items-center gap-2 px-1 flex-wrap bg-transparent py-2">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sync:</span>
-        <Button
-          type="button"
-          onClick={() => onPlaybackChange?.('play', 0)}
-          className="flex items-center hover:scale-105 gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
-        >
-          <Play className="h-3 w-3" />
-          I played
-        </Button>
+<Button
+  type="button"
+  onClick={() => {
+    onPlaybackChange?.('play', 0);
+    void sendPushNotification('Partner played', { url: '/cinema', senderId: currentUserId });
+  }}
+>
+  <Play className="h-3 w-3" />
+  I played
+</Button>
 
-        <Button
-          type="button"
-          onClick={() => onPlaybackChange?.('pause', 0)}
-          className="flex items-center hover:scale-105 gap-1.5 rounded-full border border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-        >
-          <Pause className="h-3 w-3" />
-          I paused
-        </Button>
-
+<Button
+  type="button"
+  onClick={() => {
+    onPlaybackChange?.('pause', 0);
+    void sendPushNotification('Partner paused', { url: '/cinema', senderId: currentUserId });
+  }}
+>
+  <Pause className="h-3 w-3" />
+  I paused
+</Button>
         {externalSyncEvent && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-primary fixed top-2">
             {externalSyncEvent.action === 'play'
