@@ -65,8 +65,9 @@ export async function middleware(request: NextRequest) {
 const prodCsp = [
   "default-src 'self'",
 
-  // no hash — allow external + self only
-  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com",
+  // YouTube IFrame API injects inline scripts — 'unsafe-inline' is required.
+  // s.ytimg.com serves YouTube's player assets.
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com https://s.ytimg.com",
 
   "connect-src 'self' https://api.cloudinary.com https://*.supabase.co https://*.peerjs.com wss:",
 
@@ -89,7 +90,7 @@ const prodCsp = [
 const devCsp = [
   "default-src 'self'",
 
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com https://s.ytimg.com",
 
   "connect-src 'self' https://api.cloudinary.com https://*.supabase.co https://*.peerjs.com wss:",
 
