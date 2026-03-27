@@ -46,6 +46,14 @@ async function runWarmup(userId?: string): Promise<void> {
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 function SplashUI({ progress, fading }: { progress: number; fading: boolean }) {
+    useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      // Restore to previous value, not hardcoded "auto"
+      document.body.style.overflow = prev;
+    };
+  }, []);
   return (
     <div
       className={`fixed inset-0 z-9999 flex flex-col items-center justify-center bg-background transition-opacity duration-500 ${
@@ -143,14 +151,7 @@ useEffect(() => {
     const t2 = setTimeout(() => setBootVisible(false), 900);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [bootDone, loginUser]);
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      // Restore to previous value, not hardcoded "auto"
-      document.body.style.overflow = prev;
-    };
-  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (loginUser) {
     if (!postVisible) return null;
