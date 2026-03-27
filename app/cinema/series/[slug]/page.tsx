@@ -15,6 +15,7 @@ import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { useUser } from '@/contexts/user';
 import { CinemaLoading } from '@/components/cinema_loading';
+import { CinemaPlayerSkeleton } from '@/components/screenLoading';
 type Episode = {
   title: string;
   slug: string | null;
@@ -390,30 +391,29 @@ const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(sync
   // ── Player ────────────────────────────────────────────────────────────────
 // ── Player ────────────────────────────────────────────────────────────────
   // (only the renderPlayer function changed — pass senderId down)
-  const renderPlayer = () => {
-    if (isLoadingEpisode) {
-    return <CinemaLoading />;
-
-    }
-
-    if (!episodeSource?.embed) {
-      return (
-        <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
-      );
-    }
-
+const renderPlayer = () => {
+  if (isLoadingEpisode) {
+    return <CinemaPlayerSkeleton />;   // ← inline, not fullscreen
+  }
+ 
+  if (!episodeSource?.embed) {
     return (
-      <TuniflixEmbedPlayer
-        src={episodeSource.embed}
-        title={selectedEpisode?.title || 'Episode player'}
-        className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
-        externalSyncEvent={externalSyncEvent}
-        onPlaybackChange={handlePlaybackChange}
-        currentUserId={currentUserId}
-        senderId={senderId}  // ✅ share the hook's senderId so YT player self-filters correctly
-      />
+      <p className="text-sm text-muted-foreground">No playable source for this episode.</p>
     );
-  };
+  }
+ 
+  return (
+    <TuniflixEmbedPlayer
+      src={episodeSource.embed}
+      title={selectedEpisode?.title || 'Episode player'}
+      className="h-[56vw] max-h-[70vh] min-h-75 w-full overflow-hidden rounded-2xl ring-1 ring-border/60"
+      externalSyncEvent={externalSyncEvent}
+      onPlaybackChange={handlePlaybackChange}
+      currentUserId={currentUserId}
+      senderId={senderId}
+    />
+  );
+};
 
   if (isLoadingSeries) {
     return <CinemaLoading />;

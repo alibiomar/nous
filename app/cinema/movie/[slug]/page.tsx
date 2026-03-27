@@ -7,7 +7,7 @@ import { createClient } from '@/lib/client';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/user';
-import { CinemaLoading } from '@/components/cinema_loading';
+import { CinemaPlayerSkeleton } from '@/components/screenLoading';
 type MoviePayload = {
   title: string;
   embed: string | null;
@@ -187,7 +187,7 @@ export default function CinemaMoviePage() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-<CinemaLoading />
+    <CinemaPlayerSkeleton />
     );
   }
 
