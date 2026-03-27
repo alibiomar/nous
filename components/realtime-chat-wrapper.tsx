@@ -9,7 +9,7 @@ import { createClient } from '@/lib/client';
 import { readDeviceCache, writeDeviceCache } from '@/lib/device-cache';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/contexts/call';
-
+import ChatMessageSkeleton from '@/components/chat_conversation_skeleton';
 interface RealtimeChatWrapperProps {
   currentUserId: string;
   currentUserName: string;
@@ -183,12 +183,9 @@ export function RealtimeChatWrapper({
  
   if (isLoading) {
     return (
-      <div className="mx-3 mt-1 flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
-        <div className="flex items-center gap-2 text-sm text-text-secondary">
-          <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-          <span>Loading messages...</span>
-        </div>
-      </div>
+            <div className=" flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
+        <div className="w-full   p-4">
+      <ChatMessageSkeleton /></div></div>
     );
   }
 

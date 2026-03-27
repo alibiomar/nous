@@ -14,6 +14,7 @@ import { TuniflixEmbedPlayer } from '@/components/tuniflix-embed-player';
 import { ChevronRight, Layers, PlayCircle, Tv } from 'lucide-react';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { useUser } from '@/contexts/user';
+import { CinemaLoading } from '@/components/cinema_loading';
 type Episode = {
   title: string;
   slug: string | null;
@@ -391,12 +392,8 @@ const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(sync
   // (only the renderPlayer function changed — pass senderId down)
   const renderPlayer = () => {
     if (isLoadingEpisode) {
-      return (
-        <div className="rounded-2xl border border-border/70 bg-background/55 p-4 flex items-center gap-3">
-          <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-          <p className="text-sm text-muted-foreground">Loading episode source...</p>
-        </div>
-      );
+    return <CinemaLoading />;
+
     }
 
     if (!episodeSource?.embed) {
@@ -419,12 +416,7 @@ const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(sync
   };
 
   if (isLoadingSeries) {
-    return (
-      <div className="glass-panel rounded-3xl border border-border/70 p-8 flex items-center gap-3">
-        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-        <p className="text-muted-foreground">Loading series...</p>
-      </div>
-    );
+    return <CinemaLoading />;
   }
 
   const hasEpisodes = flattenedEpisodes.length > 0;

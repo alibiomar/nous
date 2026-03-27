@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Clapperboard, Tv, Search, Film } from 'lucide-react';
+import { CinemaRoomChecking } from '@/components/cinema_skeleton';
 
 type SearchResult = {
   title: string;
@@ -127,11 +128,7 @@ export default function CinemaPage() {
   // ── Loading state while checking room ─────────────────────────────────────
   if (isCheckingRoom) {
     return (
-      <div className="glass-panel rounded-3xl border border-border/70 p-12 text-center flex gap-3 items-center justify-center">
-                        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-
-        <p className="text-sm text-muted-foreground">Checking cinema room...</p>
-      </div>
+        <CinemaRoomChecking />
     );
   }
 

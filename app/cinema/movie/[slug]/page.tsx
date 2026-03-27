@@ -7,6 +7,7 @@ import { createClient } from '@/lib/client';
 import { useCinemaSync } from '@/hooks/use-cinema-sync';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/user';
+import { CinemaLoading } from '@/components/cinema_loading';
 type MoviePayload = {
   title: string;
   embed: string | null;
@@ -186,10 +187,7 @@ export default function CinemaMoviePage() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-3xl p-8 flex items-center gap-3">
-        <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-        <p className="text-muted-foreground">Loading movie...</p>
-      </div>
+<CinemaLoading />
     );
   }
 

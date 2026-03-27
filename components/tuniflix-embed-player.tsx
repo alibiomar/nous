@@ -255,8 +255,7 @@ function GenericEmbedPlayer({
   // ✅ externalSyncEvent is now always a fresh object (stamped with receivedAt)
   //    so this effect reliably fires for every incoming event.
   useEffect(() => {
-    console.log('[embed] effect fired, externalSyncEvent:', externalSyncEvent);
-    if (!externalSyncEvent) return;
+        if (!externalSyncEvent) return;
 
     const time = externalSyncEvent.currentTime > 0
       ? ` at ${formatTime(externalSyncEvent.currentTime)}`

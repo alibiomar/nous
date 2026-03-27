@@ -113,7 +113,7 @@ export function StoriesBar({ currentUserId, onAddStory, refreshSignal }: Stories
     return (
       <div className="flex items-center gap-3 overflow-x-auto pb-1">
         <AddCircle onClick={onAddStory} />
-        <p className="text-xs text-muted-foreground whitespace-nowrap">No stories yet</p>
+        
       </div>
     );
   }

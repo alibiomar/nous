@@ -121,9 +121,31 @@ const fetchPosts = async (force = false) => {
     <div className="space-y-6">
       <div className="space-y-6">
         {isLoading && !isInitialized ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-text-secondary">
-            <img src="/animated_heart_icon.svg" alt="Loading" className="h-6 w-6" />
-            <span>Loading moments...</span>
+          <div className="space-y-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-xl border border-border bg-card overflow-hidden shadow-sm max-w-md mx-auto animate-pulse"
+              >
+                <div className="px-6 py-4 border-b border-border flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-muted/40" />
+                  <div className="flex-1">
+                    <div className="h-3 w-1/3 rounded bg-muted/40 mb-2" />
+                    <div className="h-3 w-1/4 rounded bg-muted/40" />
+                  </div>
+                </div>
+
+                <div className="h-48 bg-muted/40 w-full" />
+
+                <div className="px-6 py-4">
+                  <div className="h-3 w-3/4 rounded bg-muted/40 mb-3" />
+                  <div className="flex items-center gap-4">
+                    <div className="h-6 w-12 rounded bg-muted/40" />
+                    <div className="h-6 w-12 rounded bg-muted/40" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : posts.length === 0 && isInitialized ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
