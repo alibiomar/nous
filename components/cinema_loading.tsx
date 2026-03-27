@@ -221,19 +221,7 @@ export function CinemaLoading() {
         <CurtainPanel side="right" />
       </div>
 
-      {/* Center content reveal */}
-      <motion.div
-        className="relative z-20 flex flex-col items-center gap-3"
-        initial={{ opacity: 0, scale: 0.92, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ delay: 1.9, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <img
-          src="/animated_heart_icon.svg"
-          alt="Loading"
-          className="h-24 w-24"
-        />
-      </motion.div>
+
     </div>
   );
 }
