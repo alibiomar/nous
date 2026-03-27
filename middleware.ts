@@ -77,7 +77,7 @@ const prodCsp = [
 
   "font-src 'self' data: https://fonts.gstatic.com",
 
-  "frame-src 'self' https://www.youtube.com",
+  "frame-src 'self' https://www.youtube.com https://tuniflix.site/",
 
   "object-src 'none'",
 
