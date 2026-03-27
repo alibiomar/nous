@@ -143,7 +143,14 @@ useEffect(() => {
     const t2 = setTimeout(() => setBootVisible(false), 900);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [bootDone, loginUser]);
-
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      // Restore to previous value, not hardcoded "auto"
+      document.body.style.overflow = prev;
+    };
+  }, []);
   // ── Render ────────────────────────────────────────────────────────────────
   if (loginUser) {
     if (!postVisible) return null;

@@ -1,4 +1,4 @@
-import { motion, useAnimation } from "framer-motion";
+import { motion } from "framer-motion";
 import { useEffect } from "react";
 
 function CurtainPanel({ side }: { side: "left" | "right" }) {
@@ -17,25 +17,25 @@ function CurtainPanel({ side }: { side: "left" | "right" }) {
         delay: 0.4,
       }}
     >
-      {/* Base curtain fabric */}
+      {/* Base curtain fabric — espresso/walnut from Nous dark palette */}
       <div
         className="absolute inset-0"
         style={{
           background: isLeft
             ? `linear-gradient(to right,
-                #5a0a0a 0%, #8b1010 8%, #6b0d0d 15%, #a01414 22%,
-                #6b0d0d 30%, #8b1010 37%, #5a0a0a 44%, #7a0e0e 50%,
-                #5a0a0a 56%, #8b1010 63%, #6b0d0d 70%, #a01414 77%,
-                #6b0d0d 84%, #8b1010 92%, #3d0707 100%)`
+                #100c08 0%, #1a1610 6%, #242018 12%, #302a20 18%,
+                #242018 24%, #1e1a12 30%, #100c08 36%, #1a1610 42%,
+                #242018 48%, #302a20 54%, #242018 60%, #1e1a12 66%,
+                #100c08 72%, #1a1610 78%, #242018 84%, #100c08 100%)`
             : `linear-gradient(to left,
-                #5a0a0a 0%, #8b1010 8%, #6b0d0d 15%, #a01414 22%,
-                #6b0d0d 30%, #8b1010 37%, #5a0a0a 44%, #7a0e0e 50%,
-                #5a0a0a 56%, #8b1010 63%, #6b0d0d 70%, #a01414 77%,
-                #6b0d0d 84%, #8b1010 92%, #3d0707 100%)`,
+                #100c08 0%, #1a1610 6%, #242018 12%, #302a20 18%,
+                #242018 24%, #1e1a12 30%, #100c08 36%, #1a1610 42%,
+                #242018 48%, #302a20 54%, #242018 60%, #1e1a12 66%,
+                #100c08 72%, #1a1610 78%, #242018 84%, #100c08 100%)`,
         }}
       />
 
-      {/* Vertical fold shadows — pleats */}
+      {/* Vertical fold shadows — pleats with apricot highlight catch */}
       {Array.from({ length: foldCount }).map((_, i) => {
         const pct = (i / (foldCount - 1)) * 100;
         return (
@@ -47,11 +47,11 @@ function CurtainPanel({ side }: { side: "left" | "right" }) {
               width: "14.28%",
               background: isLeft
                 ? `linear-gradient(to right,
-                    rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.1) 30%,
-                    rgba(255,255,255,0.04) 55%, rgba(0,0,0,0.3) 100%)`
+                    rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.12) 30%,
+                    rgba(240,185,152,0.055) 55%, rgba(0,0,0,0.35) 100%)`
                 : `linear-gradient(to left,
-                    rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.1) 30%,
-                    rgba(255,255,255,0.04) 55%, rgba(0,0,0,0.3) 100%)`,
+                    rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.12) 30%,
+                    rgba(240,185,152,0.055) 55%, rgba(0,0,0,0.35) 100%)`,
             }}
           />
         );
@@ -67,14 +67,14 @@ function CurtainPanel({ side }: { side: "left" | "right" }) {
         }}
       />
 
-      {/* Animated shimmer sweep as curtain opens */}
+      {/* Animated shimmer sweep — warm apricot at opening edge */}
       <motion.div
         className="absolute top-0 bottom-0 w-24 pointer-events-none"
         style={{
           [isLeft ? "right" : "left"]: 0,
           background: isLeft
-            ? "linear-gradient(to left, rgba(255,220,160,0.18) 0%, rgba(255,200,120,0.06) 50%, transparent 100%)"
-            : "linear-gradient(to right, rgba(255,220,160,0.18) 0%, rgba(255,200,120,0.06) 50%, transparent 100%)",
+            ? "linear-gradient(to left, rgba(240,185,152,0.15) 0%, rgba(240,160,100,0.04) 60%, transparent 100%)"
+            : "linear-gradient(to right, rgba(240,185,152,0.15) 0%, rgba(240,160,100,0.04) 60%, transparent 100%)",
         }}
         initial={{ opacity: 0 }}
         animate={{ opacity: [0, 1, 0.6] }}
@@ -97,19 +97,19 @@ function CurtainPanel({ side }: { side: "left" | "right" }) {
         ))}
       </div>
 
-      {/* Bottom gather / puddle */}
+      {/* Bottom gather / puddle — deep espresso */}
       <div
         className="absolute bottom-0 left-0 right-0 h-16"
         style={{
           background: isLeft
             ? `linear-gradient(to right,
-                rgba(30,0,0,0.9) 0%, rgba(80,0,0,0.6) 20%,
-                rgba(50,0,0,0.8) 40%, rgba(90,0,0,0.5) 60%,
-                rgba(40,0,0,0.85) 80%, rgba(20,0,0,0.95) 100%)`
+                rgba(8,6,3,0.97) 0%, rgba(28,22,14,0.72) 20%,
+                rgba(14,11,6,0.85) 40%, rgba(32,26,16,0.65) 60%,
+                rgba(18,14,8,0.9) 80%, rgba(6,4,2,0.98) 100%)`
             : `linear-gradient(to left,
-                rgba(30,0,0,0.9) 0%, rgba(80,0,0,0.6) 20%,
-                rgba(50,0,0,0.8) 40%, rgba(90,0,0,0.5) 60%,
-                rgba(40,0,0,0.85) 80%, rgba(20,0,0,0.95) 100%)`,
+                rgba(8,6,3,0.97) 0%, rgba(28,22,14,0.72) 20%,
+                rgba(14,11,6,0.85) 40%, rgba(32,26,16,0.65) 60%,
+                rgba(18,14,8,0.9) 80%, rgba(6,4,2,0.98) 100%)`,
           filter: "blur(1px)",
         }}
       />
@@ -129,7 +129,6 @@ function CurtainRod() {
             "0 3px 12px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,200,0.4)",
         }}
       />
-      {/* Rod end caps — fixed using inline style instead of dynamic Tailwind class */}
       {(["left", "right"] as const).map((pos) => (
         <div
           key={pos}
@@ -145,7 +144,6 @@ function CurtainRod() {
   );
 }
 
-// Center stage-light beam that fades in as curtains part
 function StageLight() {
   return (
     <motion.div
@@ -155,7 +153,7 @@ function StageLight() {
       transition={{ delay: 1.4, duration: 1.2, ease: "easeOut" }}
       style={{
         background:
-          "radial-gradient(ellipse 45% 60% at 50% 40%, rgba(255,240,180,0.07) 0%, transparent 70%)",
+          "radial-gradient(ellipse 45% 60% at 50% 40%, rgba(240,185,152,0.05) 0%, transparent 70%)",
       }}
     />
   );
@@ -166,7 +164,6 @@ export function CinemaLoading() {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      // Restore to previous value, not hardcoded "auto"
       document.body.style.overflow = prev;
     };
   }, []);
@@ -175,19 +172,19 @@ export function CinemaLoading() {
     <div
       className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-center overflow-hidden"
       style={{
-        background: "linear-gradient(160deg, #0a0a0f 0%, #120008 100%)",
+        background: "linear-gradient(160deg, #1a1610 0%, #120008 100%)",
       }}
     >
-      {/* Ambient stage glow behind curtains */}
+      {/* Ambient stage glow — warm apricot instead of red */}
       <div
         className="absolute inset-0 z-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 50% at 50% 60%, rgba(180,20,20,0.18) 0%, transparent 70%)",
+            "radial-gradient(ellipse 70% 50% at 50% 60%, rgba(240,185,152,0.09) 0%, transparent 70%)",
         }}
       />
 
-      {/* Screen reveal bloom */}
+      {/* Screen reveal bloom — coral tint */}
       <motion.div
         className="absolute inset-0 z-[1]"
         initial={{ opacity: 0 }}
@@ -195,33 +192,45 @@ export function CinemaLoading() {
         transition={{ delay: 1.2, duration: 0.9 }}
         style={{
           background:
-            "radial-gradient(ellipse at center, rgba(255,255,255,0.06) 0%, transparent 60%)",
+            "radial-gradient(ellipse at center, rgba(244,112,91,0.07) 0%, transparent 60%)",
         }}
       />
 
       {/* Stage light beam */}
       <StageLight />
 
-      {/* Floor spotlight */}
+      {/* Floor spotlight — apricot */}
       <div
         className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-32 z-0"
         style={{
           background:
-            "radial-gradient(ellipse, rgba(255,220,100,0.08) 0%, transparent 70%)",
+            "radial-gradient(ellipse, rgba(240,185,152,0.06) 0%, transparent 70%)",
           filter: "blur(8px)",
         }}
       />
 
-      {/* Curtain rod — sits above panels */}
+      {/* Curtain rod */}
       <CurtainRod />
 
-      {/* Curtain panels — padded below the rod */}
+      {/* Curtain panels */}
       <div className="absolute inset-0 flex z-10" style={{ paddingTop: 18 }}>
         <CurtainPanel side="left" />
         <CurtainPanel side="right" />
       </div>
 
-
+      {/* Center content reveal */}
+      <motion.div
+        className="relative z-20 flex flex-col items-center gap-3"
+        initial={{ opacity: 0, scale: 0.92, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ delay: 1.9, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <img
+          src="/animated_heart_icon.svg"
+          alt="Loading"
+          className="h-24 w-24"
+        />
+      </motion.div>
     </div>
   );
 }

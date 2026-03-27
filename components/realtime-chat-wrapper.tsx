@@ -183,8 +183,9 @@ export function RealtimeChatWrapper({
  
   if (isLoading) {
     return (
-            <div className=" flex h-full items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
-      <ChatMessageSkeleton /></div>
+            <div className=" flex h-full min-h-0 items-center justify-center rounded-3xl border border-border/70 bg-background/50 md:mx-6">
+        <div className="w-full   p-4">
+      <ChatMessageSkeleton /></div></div>
     );
   }
 

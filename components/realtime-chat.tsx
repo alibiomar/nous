@@ -373,7 +373,6 @@ const handleEditMessage = useCallback(
       }
 
       // ADD THIS — confirm broadcast is reached
-      console.log('Broadcasting edit, isConnected:', isConnected)
       await broadcastEditMessage(messageId, newContent)
       window.dispatchEvent(new Event('messages:changed'))
     } catch (error) {

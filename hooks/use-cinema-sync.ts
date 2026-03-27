@@ -29,7 +29,6 @@ export function useCinemaSync(syncId: string | null) {
         config: { broadcast: { self: false, ack: false } },
       })
       .on('broadcast', { event: 'playback' }, (message: { payload: unknown }) => {
-        console.log('[cinema-sync] received', message);
         const payload = message.payload as Partial<HlsPlaybackPayload>;
         if (!payload || payload.syncId !== syncId) return;
         if (payload.senderId === senderIdRef.current) return;
@@ -45,10 +44,8 @@ export function useCinemaSync(syncId: string | null) {
           receivedAt: Date.now(),
         };
         setExternalSyncEvent(stamped);
-        console.log('[cinema-sync] set externalSyncEvent:', stamped);
       })
       .subscribe((status: string) => {
-        console.log('[cinema-sync] status', status);
         if (status === 'SUBSCRIBED') {
           channelRef.current = ch;
         } else {
@@ -64,7 +61,6 @@ export function useCinemaSync(syncId: string | null) {
 
   const handlePlaybackChange = useCallback(
     async (action: 'play' | 'pause' | 'seek', currentTime: number) => {
-      console.log('[sync] handlePlaybackChange called', action, currentTime, 'syncId:', syncId, 'channel:', !!channelRef.current);
       if (!syncId) return;
       const ch = channelRef.current;
       if (!ch) return;
@@ -79,7 +75,6 @@ export function useCinemaSync(syncId: string | null) {
           happenedAt: Date.now(),
         } satisfies HlsPlaybackPayload,
       });
-      console.log('[sync] send result:', result);
     },
     [syncId]
   );
