@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/auth';
+import { validateEmail } from '@/lib/sanitize';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const email = validateEmail(body?.email);
+    const password = body?.password;
 
     if (!email || !password) {
       return NextResponse.json(

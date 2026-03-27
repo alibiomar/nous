@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getSession, createClient } from '@/lib/auth';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText, validateUrl } from '@/lib/sanitize';
 import { parseYouTubeUrl, fetchYouTubeTitle } from '@/lib/youtube';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -106,7 +107,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    let { url, title } = body;
+    let { url: rawUrl, title: rawTitle } = body;
+    const url = validateUrl(rawUrl);
+    const title = sanitizeText(rawTitle);
 
     if (!url) {
       return NextResponse.json(
@@ -123,9 +126,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!title) {
-      title = await fetchYouTubeTitle(url);
-    }
 
     const { error: clearError } = await supabase
       .from('media')

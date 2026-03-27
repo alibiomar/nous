@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { getSession } from '@/lib/auth';
+import { sanitizeText, validateUrl } from '@/lib/sanitize';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 const supabase = createServiceClient(
@@ -27,7 +28,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as { message: string; senderId?: string; url?: string };
 
-    if (!body.message) {
+    const safeMessage = sanitizeText(body.message, 300);
+    if (!safeMessage) {
       return NextResponse.json({ error: 'Message required' }, { status: 400 });
     }
 
@@ -40,35 +42,89 @@ export async function POST(req: NextRequest) {
     let senderId: string | null = null;
 
     if (isInternalCall) {
-      // Server-to-server: use senderId from body
-      senderId = body.senderId ?? null;
-    } else {
-      // Client call: authenticate via session cookie
-      const session = await getSession();
-      if (!session) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      // Server-to-server: allow explicit senderId and optional target list
+      senderId = typeof body.senderId === 'string' ? body.senderId : null;
+      const safeUrl = validateUrl(body.url) ?? '/';
+      // support targeted list from internal callers
+      const targetUserIds = Array.isArray((body as any).targetUserIds)
+        ? (body as any).targetUserIds.filter((id: any) => typeof id === 'string' && /^[\w-]{1,64}$/.test(id))
+        : undefined;
+
+      if (targetUserIds && targetUserIds.length > 0) {
+        return await sendPush(safeMessage, senderId, safeUrl, targetUserIds);
       }
-      senderId = session.userId;
+
+      return await sendPush(safeMessage, senderId, safeUrl);
     }
 
-    return await sendPush(body.message, senderId, body.url ?? '/');
+    // Client call: authenticate via session cookie and require targeted recipient
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    senderId = session.userId;
+
+    // For client-originated requests we require an explicit recipientId and verify
+    // that the sender and recipient have an existing conversation (prevents client
+    // from broadcasting to arbitrary users).
+    const recipientId = (body as any).recipientId as string | undefined;
+    if (!recipientId) {
+      return NextResponse.json(
+        { error: 'recipientId is required for client-initiated notifications' },
+        { status: 400 }
+      );
+    }
+
+    // Basic recipient id validation
+    if (!/^[\w-]{1,64}$/.test(recipientId)) {
+      return NextResponse.json({ error: 'Invalid recipientId' }, { status: 400 });
+    }
+
+    // Verify that a conversation exists between sender and recipient
+    const { data: convo, error: convoError } = await supabase
+      .from('messages')
+      .select('id')
+      .or(
+        `(sender_id.eq.${senderId}&recipient_id.eq.${recipientId}),(sender_id.eq.${recipientId}&recipient_id.eq.${senderId})`
+      )
+      .limit(1);
+
+    if (convoError) {
+      throw convoError;
+    }
+
+    if (!convo || convo.length === 0) {
+      return NextResponse.json({ error: 'Not authorized to notify this user' }, { status: 403 });
+    }
+
+    const safeUrl = validateUrl(body.url) ?? '/';
+    return await sendPush(safeMessage, senderId, safeUrl, recipientId);
   } catch (err) {
     console.error('Push notify error:', err);
     return NextResponse.json({ error: 'Failed to send notification' }, { status: 500 });
   }
 }
 
-async function sendPush(message: string, senderId: string | null, url: string) {
-  let query = supabase
-    .from('push_subscriptions')
-    .select('endpoint, p256dh, auth');
+async function sendPush(
+  message: string,
+  senderId: string | null,
+  url: string,
+  targetUserId?: string | string[]
+) {
+  // Build subscriptions query depending on whether we target specific users
+  let subscriptionsQuery: any = supabase.from('push_subscriptions').select('endpoint, p256dh, auth, user_id');
 
-  // Exclude sender's own devices
-  if (senderId) {
-    query = query.neq('user_id', senderId) as typeof query;
+  if (Array.isArray(targetUserId)) {
+    // targetUserId is an array of user ids
+    subscriptionsQuery = subscriptionsQuery.in('user_id', targetUserId as string[]);
+  } else if (typeof targetUserId === 'string') {
+    subscriptionsQuery = subscriptionsQuery.eq('user_id', targetUserId);
+  } else {
+    // broadcast: exclude sender devices when senderId provided
+    if (senderId) subscriptionsQuery = subscriptionsQuery.neq('user_id', senderId);
   }
 
-  const { data: subscriptions, error } = await query;
+  const { data: subscriptions, error } = await subscriptionsQuery;
 
   if (error) throw error;
   if (!subscriptions || subscriptions.length === 0) {
@@ -79,7 +135,7 @@ async function sendPush(message: string, senderId: string | null, url: string) {
   const expiredEndpoints: string[] = [];
 
   await Promise.allSettled(
-    subscriptions.map(async (sub) => {
+    (subscriptions as any[]).map(async (sub) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },

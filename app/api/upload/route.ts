@@ -69,11 +69,30 @@ export async function POST(request: Request) {
     const isVideo = file.type.startsWith('video/');
     const isImage = file.type.startsWith('image/');
 
+    // Allowlist MIME types to reduce risk of script uploads disguised as images
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+
     if (!isImage && !isVideo) {
       return NextResponse.json(
         { error: 'Only image or video files are allowed' },
         { status: 400 },
       );
+    }
+
+    if (isImage && !allowedImageTypes.includes(file.type)) {
+      return NextResponse.json({ error: 'Unsupported image format' }, { status: 400 });
+    }
+
+    if (isVideo && !allowedVideoTypes.includes(file.type)) {
+      return NextResponse.json({ error: 'Unsupported video format' }, { status: 400 });
+    }
+
+    // Basic filename validation to avoid path traversal or weird characters
+    const rawName = (file as any).name || '';
+    const nameMatch = rawName.match(/^[\w\-.() ]{1,200}$/);
+    if (!nameMatch) {
+      return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
     }
 
     const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;

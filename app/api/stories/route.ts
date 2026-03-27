@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
+import { sanitizeText, validateYouTubeId } from '@/lib/sanitize';
 import { decryptFields } from '@/lib/db-encryption';
 
 const supabase = createServiceClient(
@@ -170,16 +171,25 @@ export async function POST(request: NextRequest) {
     const startOffsetRaw = formData.get('startOffset');
     const startOffset    = startOffsetRaw ? parseFloat(startOffsetRaw as string) : 0;
     const isSelfie       = formData.get('isSelfie') === 'true';
-    const caption        = (formData.get('caption') as string | null)?.trim() || null;
+    const captionRaw     = formData.get('caption') as string | null;
+    const caption        = sanitizeText(captionRaw) || null;
 
     // YouTube fields (optional)
-    const youtubeVideoId = formData.get('youtube_video_id') as string | null;
-    const youtubeTitle   = (formData.get('youtube_title') as string | null)?.trim() || null;
+    const youtubeVideoIdRaw = formData.get('youtube_video_id') as string | null;
+    const youtubeVideoId = validateYouTubeId(youtubeVideoIdRaw);
+    const youtubeTitleRaw   = formData.get('youtube_title') as string | null;
+    const youtubeTitle      = sanitizeText(youtubeTitleRaw);
     const youtubeStartSec = formData.get('youtube_start_sec');
     const youtubeEndSec   = formData.get('youtube_end_sec');
 
     if (!(imageFile instanceof File)) {
       return NextResponse.json({ error: 'image_file is required' }, { status: 400 });
+    }
+
+    // Validate image MIME type and size
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedImageTypes.includes(imageFile.type)) {
+      return NextResponse.json({ error: 'Unsupported image format' }, { status: 400 });
     }
 
     if (imageFile.size > MAX_IMAGE_SIZE) {
@@ -196,6 +206,11 @@ export async function POST(request: NextRequest) {
     let videoPublicId: string | null = null;
 
     if (videoFile instanceof File) {
+      const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+      if (!allowedVideoTypes.includes(videoFile.type)) {
+        return NextResponse.json({ error: 'Unsupported video format' }, { status: 400 });
+      }
+
       if (videoFile.size > MAX_VIDEO_SIZE) {
         return NextResponse.json({ error: 'Video must be smaller than 50MB' }, { status: 400 });
       }

@@ -2,10 +2,25 @@ import { NextResponse } from 'next/server';
 import { createClient, getSession } from '@/lib/auth';
 import { encryptFields } from '@/lib/db-encryption';
 
-function cleanString(value: unknown) {
+function encodeHtmlEntities(s: string) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeText(value: unknown, maxLen = 100) {
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  let trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  // Remove any HTML tags
+  trimmed = trimmed.replace(/<[^>]*>/g, '');
+  if (trimmed.length === 0) return null;
+  // Truncate to a reasonable length and HTML-encode to prevent XSS
+  if (trimmed.length > maxLen) trimmed = trimmed.slice(0, maxLen);
+  return encodeHtmlEntities(trimmed);
 }
 
 export async function GET() {
@@ -43,9 +58,9 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const name = cleanString(body?.name);
-    const avatarUrl = cleanString(body?.avatar_url ?? body?.avatarUrl);
-    const birthday = cleanString(body?.birthday);
+    const name = sanitizeText(body?.name);
+    const avatarUrl = validateUrl(body?.avatar_url ?? body?.avatarUrl);
+    const birthday = validateDate(body?.birthday);
 
     if (!name && !avatarUrl && !birthday) {
       return NextResponse.json({ error: 'No profile updates provided' }, { status: 400 });
@@ -110,4 +125,28 @@ export async function PUT(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function validateUrl(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    // limit length to prevent abuse
+    if (trimmed.length > 200) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+function validateDate(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
 }

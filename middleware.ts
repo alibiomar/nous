@@ -59,6 +59,54 @@ export async function middleware(request: NextRequest) {
   }
 
   // 6. Return the response (which contains any refreshed cookies!)
+  // Set a conservative Content Security Policy to mitigate XSS impact.
+  // Adjust sources as needed for third-party integrations (YouTube, Cloudinary, analytics).
+  const isProd = process.env.NODE_ENV === 'production';
+const prodCsp = [
+  "default-src 'self'",
+
+  // no hash — allow external + self only
+  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com",
+
+  "connect-src 'self' https://api.cloudinary.com https://*.supabase.co https://*.peerjs.com wss:",
+
+  "img-src 'self' data: blob: https://res.cloudinary.com",
+
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+
+  "font-src 'self' data: https://fonts.gstatic.com",
+
+  "frame-src 'self' https://www.youtube.com",
+
+  "object-src 'none'",
+
+  // extra hardening (recommended)
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+  // During development, relax CSP to avoid blocking dev tooling (HMR/react-refresh uses eval/inline).
+  // In production, keep the stricter policy above.
+const devCsp = [
+  "default-src 'self'",
+
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.youtube.com",
+
+  "connect-src 'self' https://api.cloudinary.com https://*.supabase.co https://*.peerjs.com wss:",
+
+  "img-src 'self' data: blob: https://res.cloudinary.com",
+
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+
+  "font-src 'self' data: https://fonts.gstatic.com",
+
+  "frame-src 'self' https://www.youtube.com",
+
+  "object-src 'none'",
+].join('; ');
+  const csp = isProd ? prodCsp : devCsp;
+
+  supabaseResponse.headers.set('Content-Security-Policy', csp);
+
   return supabaseResponse;
 }
 

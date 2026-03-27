@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText } from '@/lib/sanitize';
 
 
 
@@ -30,7 +31,7 @@ export async function PATCH(
 
     const { commentId } = await params;
     const body = await request.json();
-    const content = typeof body?.content === 'string' ? body.content.trim() : '';
+    const content = sanitizeText(body?.content);
 
     if (!content) {
       return NextResponse.json({ error: 'Comment content is required' }, { status: 400 });

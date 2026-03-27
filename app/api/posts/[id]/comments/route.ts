@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText } from '@/lib/sanitize';
 
 // Create client that will use user's JWT for auth context
 
@@ -64,9 +65,10 @@ export async function POST(
 
     const supabase = await createClient();
 
-    const { content } = await request.json();
+    const body = await request.json();
+    const content = sanitizeText(body?.content);
 
-    if (!content || !content.trim()) {
+    if (!content) {
       return NextResponse.json(
         { error: 'Comment content is required' },
         { status: 400 }
@@ -80,7 +82,7 @@ export async function POST(
       .insert({
         post_id: postId,
         user_id: session.userId,
-        content: encryptValue(content.trim()),
+        content: encryptValue(content),
       })
       .select('*, user:users(id, name, email, avatar_url)')
       .single();

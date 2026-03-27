@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText, validateUrl } from '@/lib/sanitize';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -186,8 +187,11 @@ export async function POST(request: NextRequest) {
     await ensureUserRow(supabase, session);
 
     const body = await request.json();
-    const { content, image_url, imageUrl, clientTimestamp } = body;
-    const finalImageUrl = image_url || imageUrl || null;
+    const rawContent = body?.content;
+    const rawImageUrl = body?.image_url ?? body?.imageUrl;
+    const clientTimestamp = body?.clientTimestamp ?? body?.client_timestamp ?? null;
+    const content = sanitizeText(rawContent);
+    const finalImageUrl = validateUrl(rawImageUrl) || null;
 
     if (!content && !finalImageUrl) {
       return NextResponse.json(
@@ -246,7 +250,8 @@ export async function PATCH(request: NextRequest) {
     const supabase = await createClient();
 
     const body = await request.json();
-    const { action, messageId, content } = body;
+    const { action, messageId } = body;
+    const content = sanitizeText(body?.content);
 
     if (!action) {
       const { error } = await supabase

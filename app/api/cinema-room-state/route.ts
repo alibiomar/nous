@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSession, createClient } from '@/lib/auth';
+import { validateRoomId, sanitizeText } from '@/lib/sanitize';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -89,10 +90,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { room, room_type, payload } = body;
+    const { room: rawRoom, room_type, payload } = body;
+    const room = validateRoomId(rawRoom) || null;
 
     if (!room) {
-      return NextResponse.json({ error: 'Room is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Room is required or invalid' }, { status: 400 });
     }
 
     // Read current version so we can increment it atomically
@@ -104,10 +106,12 @@ export async function POST(request: NextRequest) {
 
     const nextVersion = (existing?.version ?? 0) + 1;
 
+    const safePayload = typeof payload === 'string' ? sanitizeText(payload, 1000) : payload ?? null;
+
     const upsertData = {
       room,
       room_type: room_type ?? null,
-      payload: payload ?? null,
+      payload: safePayload,
       updated_by: session.userId,
       updated_at: new Date().toISOString(),
       version: nextVersion,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText } from '@/lib/sanitize';
 
 
 
@@ -16,7 +17,7 @@ export async function PATCH(
 
     const { id: postId } = await params;
     const body = await request.json();
-    const caption = typeof body?.caption === 'string' ? body.caption.trim() : '';
+    const caption = sanitizeText(body?.caption) || '';
 
     const supabase = await createClient();
 

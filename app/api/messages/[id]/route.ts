@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, createClient } from '@/lib/auth';
 import { decryptFields, encryptValue } from '@/lib/db-encryption';
+import { sanitizeText } from '@/lib/sanitize';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -29,7 +30,7 @@ export async function PATCH(
     const supabase = await createClient();
 
     const body = await request.json();
-    const content = typeof body?.content === 'string' ? body.content.trim() : '';
+    const content = sanitizeText(body?.content);
 
     if (!content) {
       return NextResponse.json(
