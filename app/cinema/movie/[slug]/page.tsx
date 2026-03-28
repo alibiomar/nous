@@ -26,7 +26,7 @@ export default function CinemaMoviePage() {
   const slug = params?.slug;
   const router = useRouter();
   const search = useSearchParams();
-  const roomParam = search?.get('room') ?? 'cinema:shared';
+  const roomParam = search?.get('room') ?? 'cinema-shared';
   const supabase = createClient();
     const { user } = useUser();
   const currentUserId = user?.id;
@@ -89,6 +89,7 @@ export default function CinemaMoviePage() {
     if (!movie || !slug) return;
     void fetch('/api/cinema-room-state', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         room: roomParam,
