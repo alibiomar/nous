@@ -86,11 +86,11 @@ function CurtainPanel({ side }: { side: "left" | "right" }) {
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-full border border-yellow-600/70"
+            className="rounded-full border border-gray-400/70"
             style={{
               width: 10,
               height: 14,
-              background: "radial-gradient(circle at 35% 35%, #d4a017, #7a5c00)",
+              background: "radial-gradient(circle at 35% 35%, #d0d0d0 , #707070 )",
               boxShadow: "0 1px 3px rgba(0,0,0,0.6)",
             }}
           />
@@ -124,9 +124,9 @@ function CurtainRod() {
         className="w-full h-full"
         style={{
           background:
-            "linear-gradient(to bottom, #f0c040 0%, #b8860b 40%, #7a5c00 70%, #c8a000 100%)",
+            "linear-gradient(to bottom, #e8e8e8 0%, #a0a0a0 40%, #6e6e6e 70%, #c0c0c0 100%)",
           boxShadow:
-            "0 3px 12px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,200,0.4)",
+            "0 3px 12px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,255,0.5)",
         }}
       />
       {(["left", "right"] as const).map((pos) => (
@@ -135,7 +135,7 @@ function CurtainRod() {
           className="absolute top-0 w-5 h-full rounded-full"
           style={{
             [pos]: 0,
-            background: "radial-gradient(circle at 40% 40%, #f5d060, #8a6500)",
+            background: "radial-gradient(circle at 40% 40%, #f0f0f0, #707070)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.7)",
           }}
         />
