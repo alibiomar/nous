@@ -52,7 +52,7 @@ export default function CinemaSeriesPage() {
   const slug = params?.slug;
   const router = useRouter();
   const search = useSearchParams();
-  const roomParam = search?.get('room') ?? 'cinema:shared';
+  const roomParam = search?.get('room') ?? 'cinema-shared';
   const supabase = createClient();
 
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -246,6 +246,7 @@ const { externalSyncEvent, handlePlaybackChange, senderId } = useCinemaSync(sync
 
     void fetch('/api/cinema-room-state', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         room: roomParam,
