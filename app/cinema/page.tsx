@@ -26,7 +26,7 @@ type RoomState = {
   payload: RoomStatePayload | null;
 };
 
-const SHARED_ROOM = 'cinema:shared';
+const SHARED_ROOM = 'cinema-shared';
 
 export default function CinemaPage() {
   const router = useRouter();
